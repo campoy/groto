@@ -64,6 +64,8 @@ func (s *Scanner) Scan() Token {
 		return s.identifier()
 	case isDecimalDigit(r):
 		return s.number()
+	case r == quote || r == doubleQuote:
+		return s.string()
 	default:
 		return errorf("unexpected character %c", r)
 	}
@@ -71,20 +73,34 @@ func (s *Scanner) Scan() Token {
 
 // IDENTIFIERS
 
-type stringToken string
+type runes []rune
 
-func (tok stringToken) String() string { return string(tok) }
+func (r runes) String() string { return string(r) }
 
-type Identifier struct{ stringToken }
+type Identifier struct{ runes }
+
+type Boolean struct{ value bool }
+
+func (b Boolean) String() string {
+	if b.value {
+		return "true"
+	}
+	return "false"
+}
 
 // 	ident = letter { letter | decimalDigit | "_" }
 func (s *Scanner) identifier() Token {
 	value := s.readWhile(isLetter, isDecimalDigit, isRune(underscore))
 
+	switch s := string(value); s {
+	case "true", "false":
+		return Boolean{s == "true"}
+
+	}
 	// check if keyword
 	// nan, inf
 
-	return Identifier{stringToken(value)}
+	return Identifier{value}
 }
 
 // NUMBERS
@@ -131,14 +147,15 @@ func (s SignedNumber) String() string {
 	return sign + s.number.String()
 }
 
-type Decimal struct{ stringToken }
+type Decimal struct{ runes }
 
 func (d Decimal) Integer() int64 {
 	return 0 // TODO
 }
 
-type Octal struct{ stringToken }
-type Hex struct{ stringToken }
+type Octal struct{ runes }
+type Hex struct{ runes }
+
 type Float struct {
 	integer  Decimal
 	fraction *Decimal
@@ -172,13 +189,13 @@ func (s *Scanner) number() Token {
 	decimals := []rune{first}
 	decimals = append(decimals, s.readWhile(isDecimalDigit)...)
 	float := Float{
-		integer: Decimal{stringToken(decimals)},
+		integer: Decimal{decimals},
 	}
 	next := s.read()
 
 	if next == dot {
 		fraction := s.readWhile(isDecimalDigit)
-		float.fraction = &Decimal{stringToken(fraction)}
+		float.fraction = &Decimal{fraction}
 		next = s.read()
 	}
 
@@ -190,7 +207,7 @@ func (s *Scanner) number() Token {
 		value := s.readWhile(isDecimalDigit)
 		float.exponent = &SignedInteger{
 			positive: sign == '+',
-			integer:  Decimal{stringToken(value)},
+			integer:  Decimal{value},
 		}
 	}
 
@@ -205,7 +222,7 @@ func (s *Scanner) octal() Token {
 	if isDecimalDigit(s.peek()) {
 		return errorf("malformed octal constant %s%c", string(value), s.peek())
 	}
-	return Octal{stringToken(value)}
+	return Octal{value}
 }
 
 func (s *Scanner) hex(zero, x rune) Token {
@@ -213,7 +230,7 @@ func (s *Scanner) hex(zero, x rune) Token {
 	if len(value) == 0 {
 		return errorf("malformed hex constant %c%c", zero, x)
 	}
-	return Hex{stringToken(value)}
+	return Hex{value}
 }
 
 func (s *Scanner) readWhile(fs ...func(rune) bool) []rune {
