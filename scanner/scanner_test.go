@@ -8,10 +8,10 @@ import (
 
 func float(integer, fraction, sign, exp string) Token {
 	f := Float{
-		integer: Decimal{stringToken(integer)},
+		integer: Decimal{runes(integer)},
 	}
 	if fraction != "" {
-		f.fraction = &Decimal{stringToken(fraction)}
+		f.fraction = &Decimal{runes(fraction)}
 	}
 	if exp != "" {
 		if sign != "+" && sign != "-" {
@@ -19,7 +19,7 @@ func float(integer, fraction, sign, exp string) Token {
 		}
 		f.exponent = &SignedInteger{
 			positive: sign == "+",
-			integer:  Decimal{stringToken(exp)},
+			integer:  Decimal{runes(exp)},
 		}
 	}
 	return f
@@ -33,28 +33,34 @@ func TestScanner(t *testing.T) {
 	}{
 		{"empty string", "", nil},
 		{"one letter ident", "x", []Token{
-			Identifier{"x"},
+			Identifier{runes("x")},
 		}},
 		{"longer ident", "counter", []Token{
-			Identifier{"counter"},
+			Identifier{runes("counter")},
 		}},
 		{"two identifiers", "a b ", []Token{
-			Identifier{"a"}, Identifier{"b"},
+			Identifier{runes("a")}, Identifier{runes("b")},
 		}},
 		{"decimal numbers", "0 1 20 30000", []Token{
-			Decimal{"0"}, Decimal{"1"}, Decimal{"20"}, Decimal{"30000"},
+			Decimal{runes("0")}, Decimal{runes("1")}, Decimal{runes("20")}, Decimal{runes("30000")},
 		}},
 		{"octal numbers", "01 020", []Token{
-			Octal{"1"}, Octal{"20"},
+			Octal{runes("1")}, Octal{runes("20")},
 		}},
 		{"hex numbers", "0x1 0xA2F", []Token{
-			Hex{"1"}, Hex{"A2F"},
+			Hex{runes("1")}, Hex{runes("A2F")},
 		}},
 		{"float numbers", "0.1E+2 1.2 1.3E-10 4e+5", []Token{
 			float("0", "1", "+", "2"),
 			float("1", "2", "", ""),
 			float("1", "3", "-", "10"),
 			float("4", "", "+", "5"),
+		}},
+		{"double quote strings", `"" "hello" "hello\" there"`, []Token{
+			String{}, String{runes(`hello`)}, String{runes(`hello\" there`)},
+		}},
+		{"single quote strings", `'' 'hello' 'hello\' there'`, []Token{
+			String{}, String{runes(`hello`)}, String{runes(`hello\' there`)},
 		}},
 	}
 

@@ -90,7 +90,7 @@ func (b Boolean) String() string {
 
 // 	ident = letter { letter | decimalDigit | "_" }
 func (s *Scanner) identifier() Token {
-	value := s.readWhile(isLetter, isDecimalDigit, isRune(underscore))
+	value := s.readWhile(or(isLetter, isDecimalDigit, equals(underscore)))
 
 	switch s := string(value); s {
 	case "true", "false":
@@ -101,6 +101,26 @@ func (s *Scanner) identifier() Token {
 	// nan, inf
 
 	return Identifier{value}
+}
+
+// STRINGS
+
+type String struct{ runes }
+
+func (s *Scanner) string() Token {
+	first := s.read()
+	var value []rune
+
+	for {
+		cont := s.readUntil(equals(first))
+		next := s.read()
+		value = append(value, cont...)
+
+		if len(cont) == 0 || cont[len(cont)-1] != backslash {
+			return String{value}
+		}
+		value = append(value, next)
+	}
 }
 
 // NUMBERS
@@ -148,13 +168,12 @@ func (s SignedNumber) String() string {
 }
 
 type Decimal struct{ runes }
-
-func (d Decimal) Integer() int64 {
-	return 0 // TODO
-}
-
 type Octal struct{ runes }
 type Hex struct{ runes }
+
+func (d Decimal) Integer() int64 { return 0 } // TODO
+func (o Octal) Integer() int64   { return 0 } // TODO
+func (h Hex) Integer() int64     { return 0 } // TODO
 
 type Float struct {
 	integer  Decimal
@@ -233,46 +252,59 @@ func (s *Scanner) hex(zero, x rune) Token {
 	return Hex{value}
 }
 
-func (s *Scanner) readWhile(fs ...func(rune) bool) []rune {
+func (s *Scanner) readUntil(p runePredicate) []rune {
 	var value []rune
 	for {
 		r := s.read()
 		if r == eof {
 			return value
 		}
-
-		match := false
-		for _, f := range fs {
-			if f(r) {
-				match = true
-				break
-			}
-		}
-
-		if !match {
+		if p(r) {
 			s.unread()
 			return value
 		}
-
 		value = append(value, r)
 	}
 }
 
+func (s *Scanner) readWhile(p runePredicate) []rune { return s.readUntil(not(p)) }
+
 // character classes
 
-func isLetter(r rune) bool       { return unicode.IsLetter(r) }
-func isSpace(r rune) bool        { return unicode.IsSpace(r) }
-func isDecimalDigit(r rune) bool { return r >= '0' && r <= '9' }
-func isOctalDigit(r rune) bool   { return r >= '0' && r <= '7' }
-func isHexDigit(r rune) bool {
-	r = unicode.ToUpper(r)
-	return isDecimalDigit(r) || (r >= 'A' && r <= 'F')
+type runePredicate func(rune) bool
+
+var (
+	isLetter       = unicode.IsLetter
+	isSpace        = unicode.IsSpace
+	isDecimalDigit = isBetween('0', '9')
+	isOctalDigit   = isBetween('0', '7')
+	isHexDigit     = or(isDecimalDigit, isBetween('a', 'f'), isBetween('A', 'F'))
+)
+
+func isBetween(a, b rune) runePredicate { return func(r rune) bool { return r >= a && r <= b } }
+func equals(r rune) runePredicate       { return func(s rune) bool { return r == s } }
+func not(f runePredicate) runePredicate { return func(r rune) bool { return !f(r) } }
+
+func or(fs ...runePredicate) runePredicate {
+	return func(r rune) bool {
+		for _, f := range fs {
+			if f(r) {
+				return true
+			}
+		}
+		return false
+	}
 }
-func isBetween(r, a, b rune) bool {
-	return r >= a && r <= b
-}
-func isRune(r rune) func(rune) bool {
-	return func(s rune) bool { return r == s }
+
+func and(fs ...runePredicate) runePredicate {
+	return func(r rune) bool {
+		for _, f := range fs {
+			if !f(r) {
+				return false
+			}
+		}
+		return true
+	}
 }
 
 const (
@@ -280,7 +312,8 @@ const (
 	underscore  rune = '_'
 	eof         rune = 0
 	dot         rune = '.'
-	quote       rune = '\\'
+	backslash   rune = '\\'
+	quote       rune = '\''
 	doubleQuote rune = '"'
 	semicolon   rune = ';'
 )
