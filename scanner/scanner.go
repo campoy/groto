@@ -108,11 +108,11 @@ func (s *Scanner) Scan() Token {
 
 // IDENTIFIERS
 
-type runes []rune
+type Runes []rune
 
-func (r runes) String() string { return string(r) }
+func (r Runes) String() string { return string(r) }
 
-type Identifier struct{ runes }
+type Identifier struct{ Runes }
 
 type FullIdentifier struct {
 	Identfiers []Identifier
@@ -135,7 +135,7 @@ func (b Boolean) String() string {
 	return "false"
 }
 
-type Keyword struct{ runes }
+type Keyword struct{ Runes }
 
 var keywords = map[string]bool{
 	"enum":    true,
@@ -149,7 +149,7 @@ var keywords = map[string]bool{
 	"weak":    true,
 }
 
-type Type struct{ runes }
+type Type struct{ Runes }
 
 var types = map[string]bool{
 	"bool":     true,
@@ -202,7 +202,7 @@ func (s *Scanner) fullIdentifier(start []rune) Token {
 
 // STRINGS
 
-type String struct{ runes }
+type String struct{ Runes }
 
 func (s *Scanner) string() Token {
 	first := s.read()
@@ -222,7 +222,7 @@ func (s *Scanner) string() Token {
 
 // COMMENTS
 
-type Comment struct{ runes }
+type Comment struct{ Runes }
 
 func (s *Scanner) comment() Token {
 	s.read()
@@ -281,9 +281,9 @@ func (s SignedNumber) String() string {
 	return sign + s.number.String()
 }
 
-type Decimal struct{ runes }
-type Octal struct{ runes }
-type Hex struct{ runes }
+type Decimal struct{ Runes }
+type Octal struct{ Runes }
+type Hex struct{ Runes }
 
 func (d Decimal) Integer() int64 { return 0 } // TODO
 func (o Octal) Integer() int64   { return 0 } // TODO

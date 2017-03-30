@@ -8,10 +8,10 @@ import (
 
 func float(integer, fraction, sign, exp string) Float {
 	f := Float{
-		integer: Decimal{runes(integer)},
+		integer: Decimal{Runes(integer)},
 	}
 	if fraction != "" {
-		f.fraction = &Decimal{runes(fraction)}
+		f.fraction = &Decimal{Runes(fraction)}
 	}
 	if exp != "" {
 		if sign != "+" && sign != "-" {
@@ -19,7 +19,7 @@ func float(integer, fraction, sign, exp string) Float {
 		}
 		f.exponent = &SignedInteger{
 			positive: sign == "+",
-			integer:  Decimal{runes(exp)},
+			integer:  Decimal{Runes(exp)},
 		}
 	}
 	return f
@@ -33,25 +33,25 @@ func TestScanner(t *testing.T) {
 	}{
 		{"empty string", "", nil},
 		{"one letter ident", "x", []Token{
-			Identifier{runes("x")},
+			Identifier{Runes("x")},
 		}},
 		{"longer ident", "counter", []Token{
-			Identifier{runes("counter")},
+			Identifier{Runes("counter")},
 		}},
 		{"full identifier", "one.two.three", []Token{
-			FullIdentifier{[]Identifier{{runes("one")}, {runes("two")}, {runes("three")}}},
+			FullIdentifier{[]Identifier{{Runes("one")}, {Runes("two")}, {Runes("three")}}},
 		}},
 		{"two identifiers", "a b ", []Token{
-			Identifier{runes("a")}, Identifier{runes("b")},
+			Identifier{Runes("a")}, Identifier{Runes("b")},
 		}},
 		{"decimal numbers", "0 1 20 30000", []Token{
-			Decimal{runes("0")}, Decimal{runes("1")}, Decimal{runes("20")}, Decimal{runes("30000")},
+			Decimal{Runes("0")}, Decimal{Runes("1")}, Decimal{Runes("20")}, Decimal{Runes("30000")},
 		}},
 		{"octal numbers", "01 020", []Token{
-			Octal{runes("1")}, Octal{runes("20")},
+			Octal{Runes("1")}, Octal{Runes("20")},
 		}},
 		{"hex numbers", "0x1 0xA2F", []Token{
-			Hex{runes("1")}, Hex{runes("A2F")},
+			Hex{Runes("1")}, Hex{Runes("A2F")},
 		}},
 		{"float numbers", "0.1E+2 1.2 1.3E-10 4e+5", []Token{
 			float("0", "1", "+", "2"),
@@ -60,23 +60,23 @@ func TestScanner(t *testing.T) {
 			float("4", "", "+", "5"),
 		}},
 		{"signed numbers", "+0 -010 -0xfff +0.5 -1", []Token{
-			SignedInteger{positive: true, integer: Decimal{runes("0")}},
-			SignedInteger{positive: false, integer: Octal{runes("10")}},
-			SignedInteger{positive: false, integer: Hex{runes("fff")}},
+			SignedInteger{positive: true, integer: Decimal{Runes("0")}},
+			SignedInteger{positive: false, integer: Octal{Runes("10")}},
+			SignedInteger{positive: false, integer: Hex{Runes("fff")}},
 			SignedNumber{positive: true, number: float("0", "5", "", "")},
-			SignedInteger{positive: false, integer: Decimal{runes("1")}},
+			SignedInteger{positive: false, integer: Decimal{Runes("1")}},
 		}},
 		{"double quote strings", `"" "hello" "hello\" there"`, []Token{
-			String{}, String{runes(`hello`)}, String{runes(`hello\" there`)},
+			String{}, String{Runes(`hello`)}, String{Runes(`hello\" there`)},
 		}},
 		{"single quote strings", `'' 'hello' 'hello\' there'`, []Token{
-			String{}, String{runes(`hello`)}, String{runes(`hello\' there`)},
+			String{}, String{Runes(`hello`)}, String{Runes(`hello\' there`)},
 		}},
 		{"booleans", `true false`, []Token{
 			Boolean{true}, Boolean{false},
 		}},
 		{"keywords, booleans, and idents", `import false hello bytes`, []Token{
-			Keyword{runes("import")}, Boolean{false}, Identifier{runes("hello")}, Type{runes("bytes")},
+			Keyword{Runes("import")}, Boolean{false}, Identifier{Runes("hello")}, Type{Runes("bytes")},
 		}},
 		{"punctuation", `(){};=`, []Token{
 			Punctuation{OpenParens}, Punctuation{CloseParens},
@@ -84,7 +84,7 @@ func TestScanner(t *testing.T) {
 			Punctuation{Semicolon}, Punctuation{Equal},
 		}},
 		{"comments", "text // a comment\nimport", []Token{
-			Identifier{runes("text")}, Comment{runes("a comment")}, Keyword{runes("import")},
+			Identifier{Runes("text")}, Comment{Runes("a comment")}, Keyword{Runes("import")},
 		}},
 	}
 
