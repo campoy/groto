@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"strings"
 	"unicode"
 )
 
@@ -113,6 +114,18 @@ func (r runes) String() string { return string(r) }
 
 type Identifier struct{ runes }
 
+type FullIdentifier struct {
+	Identfiers []Identifier
+}
+
+func (i FullIdentifier) String() string {
+	var names []string
+	for _, n := range i.Identfiers {
+		names = append(names, n.String())
+	}
+	return strings.Join(names, ".")
+}
+
 type Boolean struct{ value bool }
 
 func (b Boolean) String() string {
@@ -158,6 +171,11 @@ var types = map[string]bool{
 
 func (s *Scanner) identifier() Token {
 	value := s.readWhile(or(isLetter, isDecimalDigit, equals(underscore)))
+
+	if s.peek() == dot {
+		return s.fullIdentifier(value)
+	}
+
 	switch text := string(value); {
 	case text == "true":
 		return Boolean{true}
@@ -170,6 +188,16 @@ func (s *Scanner) identifier() Token {
 	default:
 		return Identifier{value}
 	}
+}
+
+func (s *Scanner) fullIdentifier(start []rune) Token {
+	idents := []Identifier{{start}}
+	for s.peek() == dot {
+		s.read()
+		value := s.readWhile(or(isLetter, isDecimalDigit, equals(underscore)))
+		idents = append(idents, Identifier{value})
+	}
+	return FullIdentifier{idents}
 }
 
 // STRINGS

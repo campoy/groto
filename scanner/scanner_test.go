@@ -38,6 +38,9 @@ func TestScanner(t *testing.T) {
 		{"longer ident", "counter", []Token{
 			Identifier{runes("counter")},
 		}},
+		{"full identifier", "one.two.three", []Token{
+			FullIdentifier{[]Identifier{{runes("one")}, {runes("two")}, {runes("three")}}},
+		}},
 		{"two identifiers", "a b ", []Token{
 			Identifier{runes("a")}, Identifier{runes("b")},
 		}},
