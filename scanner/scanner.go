@@ -2,6 +2,7 @@ package scanner
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
@@ -110,7 +111,8 @@ func (s *Scanner) Scan() Token {
 
 type Runes []rune
 
-func (r Runes) String() string { return string(r) }
+func (r Runes) String() string               { return string(r) }
+func (r Runes) MarshalJSON() ([]byte, error) { return json.Marshal(r.String()) }
 
 type Identifier struct{ Runes }
 

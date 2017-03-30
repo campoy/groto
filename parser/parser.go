@@ -1,9 +1,11 @@
 package parser
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/campoy/groto/scanner"
 )
 
@@ -15,6 +17,7 @@ type Proto struct {
 }
 
 var parseFuncs = map[string]func(*Proto, *parser) error{
+	"syntax":  (*Proto).addSyntax,
 	"import":  (*Proto).addImport,
 	"package": (*Proto).addPackage,
 	"option":  (*Proto).addOption,
@@ -23,19 +26,18 @@ var parseFuncs = map[string]func(*Proto, *parser) error{
 func Parse(r io.Reader) (*Proto, error) {
 	p := &parser{s: scanner.New(r)}
 
-	syntax, err := p.parseSyntax()
-	if err != nil {
-		return nil, err
-	}
-
-	proto := &Proto{Syntax: syntax}
+	var proto Proto
+	defer func() {
+		b, _ := json.MarshalIndent(proto, "", "\t")
+		logrus.Infof("proto before returning: %s", b)
+	}()
 
 	for {
 		switch next := p.Peek().(type) {
 		case scanner.Error:
 			return nil, next
 		case scanner.EOF:
-			return proto, nil
+			return &proto, nil
 		case scanner.Punctuation:
 			if next.Value == scanner.Semicolon {
 				// empty statement
@@ -49,7 +51,7 @@ func Parse(r io.Reader) (*Proto, error) {
 			if !ok {
 				return nil, fmt.Errorf("unexpected keyword at top level definition %q", next)
 			}
-			if err := parseFunc(proto, p); err != nil {
+			if err := parseFunc(&proto, p); err != nil {
 				return nil, err
 			}
 		default:
@@ -59,6 +61,15 @@ func Parse(r io.Reader) (*Proto, error) {
 }
 
 type Syntax struct{ Value string }
+
+func (proto *Proto) addSyntax(p *parser) error {
+	syntax, err := p.parseSyntax()
+	if err != nil {
+		return err
+	}
+	proto.Syntax = syntax
+	return nil
+}
 
 func (p *parser) parseSyntax() (*Syntax, error) {
 	p.consumeKeyword("syntax")
