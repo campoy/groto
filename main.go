@@ -1,23 +1,19 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
 
-	"github.com/campoy/groto/scanner"
+	"github.com/campoy/groto/parser"
 )
 
 func main() {
-	s := scanner.NewScanner(os.Stdin)
-	for {
-		switch tok := s.Scan().(type) {
-		case scanner.EOF:
-			return
-		case scanner.Error:
-			log.Fatal(tok)
-		default:
-			fmt.Printf("%T(%v)\n", tok, tok)
-		}
+	proto, err := parser.Parse(os.Stdin)
+	if err != nil {
+		log.Fatal(err)
 	}
+	b, _ := json.MarshalIndent(proto, "", "\t")
+	fmt.Printf("%s\n", b)
 }
