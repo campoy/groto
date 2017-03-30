@@ -2,15 +2,22 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os"
 
-	"github.com/campoy/groto/groto"
+	"github.com/campoy/groto/scanner"
 )
 
 func main() {
-	f, err := groto.Parse(os.Stdin)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+	s := scanner.NewScanner(os.Stdin)
+	for {
+		switch tok := s.Scan().(type) {
+		case scanner.EOF:
+			return
+		case scanner.Error:
+			log.Fatal(tok)
+		default:
+			fmt.Printf("%T(%v)\n", tok, tok)
+		}
 	}
-	fmt.Println(f)
 }

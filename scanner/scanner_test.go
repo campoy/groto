@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func float(integer, fraction, sign, exp string) Token {
+func float(integer, fraction, sign, exp string) Float {
 	f := Float{
 		integer: Decimal{runes(integer)},
 	}
@@ -56,21 +56,42 @@ func TestScanner(t *testing.T) {
 			float("1", "3", "-", "10"),
 			float("4", "", "+", "5"),
 		}},
+		{"signed numbers", "+0 -010 -0xfff +0.5 -1", []Token{
+			SignedInteger{positive: true, integer: Decimal{runes("0")}},
+			SignedInteger{positive: false, integer: Octal{runes("10")}},
+			SignedInteger{positive: false, integer: Hex{runes("fff")}},
+			SignedNumber{positive: true, number: float("0", "5", "", "")},
+			SignedInteger{positive: false, integer: Decimal{runes("1")}},
+		}},
 		{"double quote strings", `"" "hello" "hello\" there"`, []Token{
 			String{}, String{runes(`hello`)}, String{runes(`hello\" there`)},
 		}},
 		{"single quote strings", `'' 'hello' 'hello\' there'`, []Token{
 			String{}, String{runes(`hello`)}, String{runes(`hello\' there`)},
 		}},
+		{"booleans", `true false`, []Token{
+			Boolean{true}, Boolean{false},
+		}},
+		{"keywords, booleans, and idents", `import false hello bytes`, []Token{
+			Keyword{runes("import")}, Boolean{false}, Identifier{runes("hello")}, Type{runes("bytes")},
+		}},
+		{"punctuation", `(){};=`, []Token{
+			Punctuation{OpenParens}, Punctuation{CloseParens},
+			Punctuation{OpenBrace}, Punctuation{CloseBrace},
+			Punctuation{Semicolon}, Punctuation{Equal},
+		}},
+		{"comments", "text // a comment\nimport", []Token{
+			Identifier{runes("text")}, Comment{runes("a comment")}, Keyword{runes("import")},
+		}},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := NewScanner(strings.NewReader(tt.in))
+			s := New(strings.NewReader(tt.in))
 			rem := tt.out
 			for {
 				tok := s.Scan()
-				if tok == EOF {
+				if IsEOF(tok) {
 					break
 				}
 				if len(rem) == 0 {

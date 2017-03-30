@@ -7,7 +7,7 @@ import (
 	"unicode"
 )
 
-func NewScanner(r io.Reader) *Scanner {
+func New(r io.Reader) *Scanner {
 	return &Scanner{r: bufio.NewReader(r)}
 }
 
@@ -41,11 +41,14 @@ type Token interface {
 	String() string
 }
 
-type eofToken struct{}
+func IsEOF(tok Token) bool {
+	_, ok := tok.(EOF)
+	return ok
+}
 
-func (tok eofToken) String() string { return "EOF" }
+type EOF struct{}
 
-var EOF Token = eofToken{}
+func (tok EOF) String() string { return "EOF" }
 
 type Error struct{ msg string }
 
@@ -53,19 +56,50 @@ func errorf(format string, args ...interface{}) Token { return Error{fmt.Sprintf
 func (err Error) String() string                      { return err.msg }
 func (err Error) Error() string                       { return err.msg }
 
+type Punctuation struct{ Value rune }
+
+func (tok Punctuation) String() string { return string(tok.Value) }
+
+var (
+	Dot         rune = '.'
+	Equal       rune = '='
+	Semicolon   rune = ';'
+	OpenBrace   rune = '{'
+	CloseBrace  rune = '}'
+	OpenParens  rune = '('
+	CloseParens rune = ')'
+)
+
+var punctuation = map[rune]bool{
+	Dot:         true,
+	Equal:       true,
+	Semicolon:   true,
+	OpenBrace:   true,
+	CloseBrace:  true,
+	OpenParens:  true,
+	CloseParens: true,
+}
+
 func (s *Scanner) Scan() Token {
 	s.readWhile(isSpace)
 
 	r := s.peek()
 	switch {
 	case r == eof:
-		return EOF
+		return EOF{}
 	case isLetter(r):
 		return s.identifier()
 	case isDecimalDigit(r):
 		return s.number()
 	case r == quote || r == doubleQuote:
 		return s.string()
+	case r == '+' || r == '-':
+		return s.signedNumber()
+	case r == '/':
+		return s.comment()
+	case punctuation[r]:
+		s.read()
+		return Punctuation{r}
 	default:
 		return errorf("unexpected character %c", r)
 	}
@@ -88,19 +122,54 @@ func (b Boolean) String() string {
 	return "false"
 }
 
-// 	ident = letter { letter | decimalDigit | "_" }
+type Keyword struct{ runes }
+
+var keywords = map[string]bool{
+	"enum":    true,
+	"import":  true,
+	"message": true,
+	"option":  true,
+	"package": true,
+	"public":  true,
+	"service": true,
+	"syntax":  true,
+	"weak":    true,
+}
+
+type Type struct{ runes }
+
+var types = map[string]bool{
+	"bool":     true,
+	"bytes":    true,
+	"double":   true,
+	"fixed32":  true,
+	"fixed64":  true,
+	"float":    true,
+	"int32":    true,
+	"int64":    true,
+	"sfixed32": true,
+	"sfixed64": true,
+	"sint32":   true,
+	"sint64":   true,
+	"string":   true,
+	"uint32":   true,
+	"uint64":   true,
+}
+
 func (s *Scanner) identifier() Token {
 	value := s.readWhile(or(isLetter, isDecimalDigit, equals(underscore)))
-
-	switch s := string(value); s {
-	case "true", "false":
-		return Boolean{s == "true"}
-
+	switch text := string(value); {
+	case text == "true":
+		return Boolean{true}
+	case text == "false":
+		return Boolean{false}
+	case keywords[text]:
+		return Keyword{value}
+	case types[text]:
+		return Type{value}
+	default:
+		return Identifier{value}
 	}
-	// check if keyword
-	// nan, inf
-
-	return Identifier{value}
 }
 
 // STRINGS
@@ -121,6 +190,23 @@ func (s *Scanner) string() Token {
 		}
 		value = append(value, next)
 	}
+}
+
+// COMMENTS
+
+type Comment struct{ runes }
+
+func (s *Scanner) comment() Token {
+	s.read()
+	second := s.read()
+	if second != '/' {
+		s.unread()
+		return errorf("unexpected / that is not part of a comment")
+	}
+
+	s.readWhile(isSpace)
+	text := s.readUntil(equals('\n'))
+	return Comment{text}
 }
 
 // NUMBERS
@@ -192,7 +278,17 @@ func (f Float) String() string {
 	return fmt.Sprintf("%s.%s E%s", f.integer, f.fraction, f.exponent)
 }
 
-// decimalLitToken // ( "1" … "9" ) { decimalDigit }
+func (f Float) Float() float64 { return 0 } // TODO
+
+func (s *Scanner) signedNumber() Token {
+	positive := s.read() == '+'
+	tok := s.number()
+	if i, ok := tok.(Integer); ok {
+		return SignedInteger{positive, i}
+	}
+	return SignedNumber{positive, tok.(Number)}
+}
+
 func (s *Scanner) number() Token {
 	first := s.read()
 	second := s.peek()
@@ -269,7 +365,7 @@ func (s *Scanner) readUntil(p runePredicate) []rune {
 
 func (s *Scanner) readWhile(p runePredicate) []rune { return s.readUntil(not(p)) }
 
-// character classes
+// Character classes
 
 type runePredicate func(rune) bool
 
@@ -296,17 +392,6 @@ func or(fs ...runePredicate) runePredicate {
 	}
 }
 
-func and(fs ...runePredicate) runePredicate {
-	return func(r rune) bool {
-		for _, f := range fs {
-			if !f(r) {
-				return false
-			}
-		}
-		return true
-	}
-}
-
 const (
 	lineBreak   rune = '\n'
 	underscore  rune = '_'
@@ -315,5 +400,4 @@ const (
 	backslash   rune = '\\'
 	quote       rune = '\''
 	doubleQuote rune = '"'
-	semicolon   rune = ';'
 )
