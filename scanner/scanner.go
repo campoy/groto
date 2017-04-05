@@ -2,11 +2,10 @@ package scanner
 
 import (
 	"bufio"
-	"encoding/json"
-	"fmt"
 	"io"
-	"strings"
 	"unicode"
+
+	"github.com/campoy/groto/token"
 )
 
 func New(r io.Reader) *Scanner {
@@ -16,6 +15,146 @@ func New(r io.Reader) *Scanner {
 type Scanner struct {
 	r *bufio.Reader
 }
+
+func (s *Scanner) Scan() (token.Token, []rune) {
+	s.readWhile(isSpace)
+
+	r := s.peek()
+	switch {
+	case r == eof:
+		return token.EOF, nil
+	case isLetter(r):
+		return s.identifier()
+	case isDecimalDigit(r):
+		return s.number()
+	case r == quote || r == doubleQuote:
+		return s.string()
+	case r == '/':
+		return s.comment()
+	case token.Punctuation(string(r)) != token.Illegal:
+		s.read()
+		return token.Punctuation(string(r)), nil
+	default:
+		s.read()
+		return token.Illegal, []rune{r}
+	}
+}
+
+// IDENTIFIERS
+
+func (s *Scanner) identifier() (token.Token, []rune) {
+	value := s.readWhile(or(isLetter, isDecimalDigit, equals(underscore)))
+	if s.peek() == dot {
+		return s.fullIdentifier(value)
+	}
+
+	switch text := string(value); {
+	case text == "true":
+		return token.True, nil
+	case text == "false":
+		return token.False, nil
+	case token.Keyword(text) != token.Illegal:
+		return token.Keyword(text), nil
+	case token.Type(text) != token.Illegal:
+		return token.Type(text), nil
+	default:
+		return token.Identifier, value
+	}
+}
+
+func (s *Scanner) fullIdentifier(value []rune) (token.Token, []rune) {
+	for s.peek() == dot {
+		value = append(value, s.read())
+		cont := s.readWhile(or(isLetter, isDecimalDigit, equals(underscore)))
+		value = append(value, cont...)
+	}
+	return token.FullIdentifier, value
+}
+
+// STRINGS
+
+func (s *Scanner) string() (token.Token, []rune) {
+	first := s.read()
+	value := []rune{first}
+	for {
+		value = append(value, s.readUntil(equals(first))...)
+		value = append(value, s.read())
+		if len(value) == 2 || value[len(value)-2] != backslash {
+			return token.StringLiteral, value
+		}
+	}
+}
+
+// COMMENTS
+
+func (s *Scanner) comment() (token.Token, []rune) {
+	value := []rune{s.read(), s.read()}
+	if string(value) != "//" {
+		return token.Illegal, value
+	}
+
+	value = append(value, s.readUntil(equals('\n'))...)
+	return token.Comment, value
+}
+
+// NUMBERS
+
+func (s *Scanner) number() (token.Token, []rune) {
+	first := s.read()
+	second := s.peek()
+
+	if first == '0' && isDecimalDigit(second) {
+		return s.octal([]rune{first})
+	}
+	if first == '0' && (second == 'x' || second == 'X') {
+		s.read()
+		return s.hex([]rune{first, second})
+	}
+
+	tok := token.DecimalLiteral
+	value := []rune{first}
+	value = append(value, s.readWhile(isDecimalDigit)...)
+
+	next := s.read()
+	if next == dot {
+		tok = token.FloatLiteral
+		value = append(value, dot)
+		value = append(value, s.readWhile(isDecimalDigit)...)
+		next = s.read()
+	}
+
+	if next == 'E' || next == 'e' {
+		tok = token.FloatLiteral
+		value = append(value, next)
+
+		sign := s.read()
+		value = append(value, sign)
+		if sign != '+' && sign != '-' {
+			return token.Illegal, value
+		}
+		value = append(value, s.readWhile(isDecimalDigit)...)
+	}
+
+	return tok, value
+}
+
+func (s *Scanner) octal(value []rune) (token.Token, []rune) {
+	value = append(value, s.readWhile(isOctalDigit)...)
+	if isDecimalDigit(s.peek()) {
+		return token.Illegal, append(value, s.read())
+	}
+	return token.OctalLiteral, value
+}
+
+func (s *Scanner) hex(value []rune) (token.Token, []rune) {
+	value = append(value, s.readWhile(isHexDigit)...)
+	if len(value) == 2 {
+		return token.Illegal, value
+	}
+	return token.HexLiteral, value
+}
+
+// Utility functions for the scanner
 
 func (s *Scanner) read() rune {
 	r, _, err := s.r.ReadRune()
@@ -37,345 +176,6 @@ func (s *Scanner) peek() rune {
 		s.unread()
 	}
 	return r
-}
-
-type Token interface {
-	String() string
-}
-
-func IsEOF(tok Token) bool {
-	_, ok := tok.(EOF)
-	return ok
-}
-
-type EOF struct{}
-
-func (tok EOF) String() string { return "EOF" }
-
-type Error struct{ msg string }
-
-func errorf(format string, args ...interface{}) Token { return Error{fmt.Sprintf(format, args...)} }
-func (err Error) String() string                      { return err.msg }
-func (err Error) Error() string                       { return err.msg }
-
-type Punctuation struct{ Value rune }
-
-func (tok Punctuation) String() string { return string(tok.Value) }
-
-var (
-	Dot         rune = '.'
-	Equal       rune = '='
-	Semicolon   rune = ';'
-	OpenBrace   rune = '{'
-	CloseBrace  rune = '}'
-	OpenParens  rune = '('
-	CloseParens rune = ')'
-)
-
-var punctuation = map[rune]bool{
-	Dot:         true,
-	Equal:       true,
-	Semicolon:   true,
-	OpenBrace:   true,
-	CloseBrace:  true,
-	OpenParens:  true,
-	CloseParens: true,
-}
-
-func (s *Scanner) Scan() Token {
-	s.readWhile(isSpace)
-
-	r := s.peek()
-	switch {
-	case r == eof:
-		return EOF{}
-	case isLetter(r):
-		return s.identifier()
-	case isDecimalDigit(r):
-		return s.number()
-	case r == quote || r == doubleQuote:
-		return s.string()
-	case r == '+' || r == '-':
-		return s.signedNumber()
-	case r == '/':
-		return s.comment()
-	case punctuation[r]:
-		s.read()
-		return Punctuation{r}
-	default:
-		return errorf("unexpected character %c", r)
-	}
-}
-
-// IDENTIFIERS
-
-type Runes []rune
-
-func (r Runes) String() string               { return string(r) }
-func (r Runes) MarshalJSON() ([]byte, error) { return json.Marshal(r.String()) }
-
-type Identifier struct{ Runes }
-
-type FullIdentifier struct {
-	Identfiers []Identifier
-}
-
-func (i FullIdentifier) String() string {
-	var names []string
-	for _, n := range i.Identfiers {
-		names = append(names, n.String())
-	}
-	return strings.Join(names, ".")
-}
-
-type Boolean struct{ value bool }
-
-func (b Boolean) String() string {
-	if b.value {
-		return "true"
-	}
-	return "false"
-}
-
-type Keyword struct{ Runes }
-
-var keywords = map[string]bool{
-	"enum":    true,
-	"import":  true,
-	"message": true,
-	"option":  true,
-	"package": true,
-	"public":  true,
-	"service": true,
-	"syntax":  true,
-	"weak":    true,
-}
-
-type Type struct{ Runes }
-
-var types = map[string]bool{
-	"bool":     true,
-	"bytes":    true,
-	"double":   true,
-	"fixed32":  true,
-	"fixed64":  true,
-	"float":    true,
-	"int32":    true,
-	"int64":    true,
-	"sfixed32": true,
-	"sfixed64": true,
-	"sint32":   true,
-	"sint64":   true,
-	"string":   true,
-	"uint32":   true,
-	"uint64":   true,
-}
-
-func (s *Scanner) identifier() Token {
-	value := s.readWhile(or(isLetter, isDecimalDigit, equals(underscore)))
-
-	if s.peek() == dot {
-		return s.fullIdentifier(value)
-	}
-
-	switch text := string(value); {
-	case text == "true":
-		return Boolean{true}
-	case text == "false":
-		return Boolean{false}
-	case keywords[text]:
-		return Keyword{value}
-	case types[text]:
-		return Type{value}
-	default:
-		return Identifier{value}
-	}
-}
-
-func (s *Scanner) fullIdentifier(start []rune) Token {
-	idents := []Identifier{{start}}
-	for s.peek() == dot {
-		s.read()
-		value := s.readWhile(or(isLetter, isDecimalDigit, equals(underscore)))
-		idents = append(idents, Identifier{value})
-	}
-	return FullIdentifier{idents}
-}
-
-// STRINGS
-
-type String struct{ Runes }
-
-func (s *Scanner) string() Token {
-	first := s.read()
-	var value []rune
-
-	for {
-		cont := s.readUntil(equals(first))
-		next := s.read()
-		value = append(value, cont...)
-
-		if len(cont) == 0 || cont[len(cont)-1] != backslash {
-			return String{value}
-		}
-		value = append(value, next)
-	}
-}
-
-// COMMENTS
-
-type Comment struct{ Runes }
-
-func (s *Scanner) comment() Token {
-	s.read()
-	second := s.read()
-	if second != '/' {
-		s.unread()
-		return errorf("unexpected / that is not part of a comment")
-	}
-
-	s.readWhile(isSpace)
-	text := s.readUntil(equals('\n'))
-	return Comment{text}
-}
-
-// NUMBERS
-
-type Number interface {
-	Token
-	Float() float64
-}
-type Integer interface {
-	Token
-	Integer() int64
-}
-
-type SignedInteger struct {
-	positive bool
-	integer  Integer
-}
-
-func (s SignedInteger) String() string {
-	sign := "+"
-	if !s.positive {
-		sign = "-"
-	}
-	return sign + s.integer.String()
-}
-
-func (s SignedInteger) Integer() int64 {
-	if s.positive {
-		return s.integer.Integer()
-	}
-	return -s.integer.Integer()
-}
-
-type SignedNumber struct {
-	positive bool
-	number   Number
-}
-
-func (s SignedNumber) String() string {
-	sign := "+"
-	if !s.positive {
-		sign = "-"
-	}
-	return sign + s.number.String()
-}
-
-type Decimal struct{ Runes }
-type Octal struct{ Runes }
-type Hex struct{ Runes }
-
-func (d Decimal) Integer() int64 { return 0 } // TODO
-func (o Octal) Integer() int64   { return 0 } // TODO
-func (h Hex) Integer() int64     { return 0 } // TODO
-
-type Float struct {
-	integer  Decimal
-	fraction *Decimal
-	exponent *SignedInteger
-}
-
-func (s SignedNumber) Float() float64 {
-	if s.positive {
-		return s.number.Float()
-	}
-	return -s.number.Float()
-}
-
-func (f Float) String() string {
-	return fmt.Sprintf("%s.%s E%s", f.integer, f.fraction, f.exponent)
-}
-
-func (f Float) Float() float64 { return 0 } // TODO
-
-func (s *Scanner) signedNumber() Token {
-	positive := s.read() == '+'
-	tok := s.number()
-	if i, ok := tok.(Integer); ok {
-		return SignedInteger{positive, i}
-	}
-	return SignedNumber{positive, tok.(Number)}
-}
-
-func (s *Scanner) number() Token {
-	first := s.read()
-	second := s.peek()
-
-	if first == '0' && isDecimalDigit(second) {
-		return s.octal()
-	}
-	if first == '0' && (second == 'x' || second == 'X') {
-		s.read()
-		return s.hex(first, second)
-	}
-
-	decimals := []rune{first}
-	decimals = append(decimals, s.readWhile(isDecimalDigit)...)
-	float := Float{
-		integer: Decimal{decimals},
-	}
-	next := s.read()
-
-	if next == dot {
-		fraction := s.readWhile(isDecimalDigit)
-		float.fraction = &Decimal{fraction}
-		next = s.read()
-	}
-
-	if next == 'E' || next == 'e' {
-		sign := s.read()
-		if sign != '+' && sign != '-' {
-			return errorf("expected exponent sign, but found %c", sign)
-		}
-		value := s.readWhile(isDecimalDigit)
-		float.exponent = &SignedInteger{
-			positive: sign == '+',
-			integer:  Decimal{value},
-		}
-	}
-
-	if float.fraction == nil && float.exponent == nil {
-		return float.integer
-	}
-	return float
-}
-
-func (s *Scanner) octal() Token {
-	value := s.readWhile(isOctalDigit)
-	if isDecimalDigit(s.peek()) {
-		return errorf("malformed octal constant %s%c", string(value), s.peek())
-	}
-	return Octal{value}
-}
-
-func (s *Scanner) hex(zero, x rune) Token {
-	value := s.readWhile(isHexDigit)
-	if len(value) == 0 {
-		return errorf("malformed hex constant %c%c", zero, x)
-	}
-	return Hex{value}
 }
 
 func (s *Scanner) readUntil(p runePredicate) []rune {
