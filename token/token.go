@@ -2,31 +2,35 @@ package token
 
 import "strings"
 
-type Token int
+type Kind int
 
 const (
-	Illegal Token = iota
+	Illegal Kind = iota
 	EOF
 	Comment
 
-	FloatLiteral
-
+	first_constant
+	first_number
 	DecimalLiteral
-	OctalLiteral
+	FloatLiteral
 	HexLiteral
+	OctalLiteral
+	last_number
 
 	StringLiteral
+	False
+	True
+	last_constant
+
 	Identifier
-	FullIdentifier
-	DottedIdentifer
 
 	first_keyword
 	Enum
-	False
 	Import
 	Map
 	Message
 	Oneof
+	Option
 	Package
 	Public
 	Repeated
@@ -37,7 +41,6 @@ const (
 	Stream
 	Syntax
 	To
-	True
 	Weak
 	last_keyword
 
@@ -60,47 +63,52 @@ const (
 	Uint64
 	last_type
 
-	Equals
-	Semicolon
-	OpenParens
-	CloseParens
-	OpenBraces
-	CloseBraces
-	OpenBrackets
-	CloseBracket
-	OpenAngled
 	CloseAngled
+	CloseBraces
+	CloseBracket
+	CloseParens
 	Comma
+	Dot
+	Equals
 	Minus
+	OpenAngled
+	OpenBraces
+	OpenBrackets
+	OpenParens
 	Plus
+	Semicolon
 )
 
 var (
 	keywords    = from(first_keyword, last_keyword)
 	types       = from(first_type, last_type)
-	punctuation = map[string]Token{
-		"=": Equals,
-		";": Semicolon,
-		"(": OpenParens,
-		")": CloseParens,
-		"{": OpenBraces,
-		"}": CloseBraces,
-		"[": OpenBrackets,
-		"]": CloseBracket,
-		"<": OpenAngled,
+	punctuation = map[string]Kind{
 		">": CloseAngled,
+		"}": CloseBraces,
+		"]": CloseBracket,
+		")": CloseParens,
 		",": Comma,
+		".": Dot,
+		"=": Equals,
 		"-": Minus,
+		"<": OpenAngled,
+		"{": OpenBraces,
+		"[": OpenBrackets,
+		"(": OpenParens,
 		"+": Plus,
+		";": Semicolon,
 	}
 )
 
-func Keyword(s string) Token     { return keywords[s] }
-func Type(s string) Token        { return types[s] }
-func Punctuation(s string) Token { return punctuation[s] }
+func Keyword(s string) Kind     { return keywords[s] }
+func Type(s string) Kind        { return types[s] }
+func Punctuation(s string) Kind { return punctuation[s] }
 
-func from(a, b Token) map[string]Token {
-	m := make(map[string]Token, b-a-1)
+func IsConstant(k Kind) bool { return k > first_constant && k < last_constant }
+func IsNumber(k Kind) bool   { return k > first_number && k < last_number }
+
+func from(a, b Kind) map[string]Kind {
+	m := make(map[string]Kind, b-a-1)
 	for t := a + 1; t < b; t++ {
 		m[strings.ToLower(t.String())] = t
 	}

@@ -1,287 +1,272 @@
 package parser
 
 import (
-	"encoding/json"
 	"fmt"
 	"io"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/campoy/groto/scanner"
+	"github.com/campoy/groto/token"
 )
 
 type Proto struct {
-	Syntax   *Syntax
-	Imports  []*Import
-	Packages []*Package
-	Options  []*Option
-}
-
-var parseFuncs = map[string]func(*Proto, *parser) error{
-	"syntax":  (*Proto).addSyntax,
-	"import":  (*Proto).addImport,
-	"package": (*Proto).addPackage,
-	"option":  (*Proto).addOption,
+	Syntax   Syntax
+	Imports  Imports
+	Packages Packages
+	Options  Options
 }
 
 func Parse(r io.Reader) (*Proto, error) {
 	p := &parser{s: scanner.New(r)}
 
 	var proto Proto
-	defer func() {
-		b, _ := json.MarshalIndent(proto, "", "\t")
-		logrus.Infof("proto before returning: %s", b)
-	}()
+	if err := proto.parse(p); err != nil {
+		return nil, err
+	}
+	return &proto, nil
+}
 
+func (proto *Proto) parse(p *parser) error {
 	for {
-		switch next := p.Peek().(type) {
-		case scanner.Error:
-			return nil, next
-		case scanner.EOF:
-			return &proto, nil
-		case scanner.Punctuation:
-			if next.Value == scanner.Semicolon {
-				// empty statement
-			} else {
-				return nil, fmt.Errorf("unexpected %s", next)
-			}
-		case scanner.Comment:
-			p.Scan()
-		case scanner.Keyword:
-			parseFunc, ok := parseFuncs[next.String()]
-			if !ok {
-				return nil, fmt.Errorf("unexpected keyword at top level definition %q", next)
-			}
-			if err := parseFunc(&proto, p); err != nil {
-				return nil, err
-			}
+		var target interface {
+			parse(*parser) error
+		}
+		switch next := p.peek(); next.Kind {
+		case token.Illegal:
+			return fmt.Errorf("unexpected %s", next.Text)
+		case token.EOF:
+			return nil
+		case token.Semicolon, token.Comment:
+			// we ignore comments and empty statements for now
+			continue
+		case token.Syntax:
+			target = &proto.Syntax
+		case token.Import:
+			target = &proto.Imports
+		case token.Package:
+			target = &proto.Packages
+		case token.Option:
+			target = &proto.Options
 		default:
-			return nil, fmt.Errorf("unexpected %T %q", next, next)
+			return fmt.Errorf("unexpected %v (%s) at top level definition", next.Kind, next.Text)
+		}
+		if err := target.parse(p); err != nil {
+			return err
 		}
 	}
 }
 
-type Syntax struct{ Value string }
+type Syntax struct{ Value scanner.Token }
 
-func (proto *Proto) addSyntax(p *parser) error {
-	syntax, err := p.parseSyntax()
-	if err != nil {
-		return err
+func (s *Syntax) parse(p *parser) error {
+	if tok, ok := p.consume(token.Syntax, token.Equals); !ok {
+		return fmt.Errorf("expected '=', got %s instead", tok.Text)
 	}
-	proto.Syntax = syntax
+	tok := p.scan()
+	if tok.Kind != token.StringLiteral {
+		return fmt.Errorf("expected literal string \"proto3\", got a %v instead", tok.Kind)
+	}
+	if tok.Text != `"proto3"` && tok.Text != `'proto3'` {
+		return fmt.Errorf("expected literal string \"proto3\", got %s instead", tok.Text)
+	}
+	s.Value = tok
+	if _, ok := p.consume(token.Semicolon); !ok {
+		return fmt.Errorf("missing semicolon at the end of the syntax statement")
+	}
 	return nil
 }
 
-func (p *parser) parseSyntax() (*Syntax, error) {
-	p.consumeKeyword("syntax")
-	p.consumePunctuation(scanner.Equal)
-	p.consumeString("proto3")
-	p.consumePunctuation(scanner.Semicolon)
-	return &Syntax{Value: "proto3"}, p.err
+type Imports []Import
+
+func (imps *Imports) parse(p *parser) error {
+	var imp Import
+	if err := imp.parse(p); err != nil {
+		return err
+	}
+	*imps = append(*imps, imp)
+	return nil
 }
 
 type Import struct {
-	Modifier string
-	Path     string
+	Modifier scanner.Token
+	Path     scanner.Token
 }
 
-func (proto *Proto) addImport(p *parser) error {
-	imp, err := p.parseImport()
-	if err != nil {
-		return err
+func (imp *Import) parse(p *parser) error {
+	if tok, ok := p.consume(token.Import); !ok {
+		return fmt.Errorf("expected 'import' keyword, but instead got %s", tok)
 	}
-	proto.Imports = append(proto.Imports, imp)
+	next := p.scan()
+	if next.Kind == token.Weak || next.Kind == token.Public {
+		imp.Modifier = next
+		next = p.scan()
+	}
+	if next.Kind != token.StringLiteral {
+		return fmt.Errorf("expected imported package name, got %s", next)
+	}
+	imp.Path = next
 	return nil
 }
 
-func (p *parser) parseImport() (*Import, error) {
-	p.consumeKeyword("import")
+type Packages []Package
 
-	modifier := ""
-	next := p.Scan()
-	switch next.(type) {
-	case scanner.Keyword:
-		s := next.String()
-		if s != "weak" && s != "public" {
-			return nil, fmt.Errorf("unexpected keyword %q", s)
-		}
-		modifier = s
-		next = p.Scan()
-	case scanner.String:
-	default:
-		return nil, fmt.Errorf("unexpected %q", next)
+func (pkgs *Packages) parse(p *parser) error {
+	var pkg Package
+	if err := pkg.parse(p); err != nil {
+		return err
 	}
-
-	path, ok := next.(scanner.String)
-	if !ok {
-		return nil, fmt.Errorf("incorrect import path; got %q", next)
-	}
-	return &Import{Modifier: modifier, Path: path.String()}, nil
+	*pkgs = append(*pkgs, pkg)
+	return nil
 }
 
 type Package struct {
-	Identifier scanner.Token
+	Identifier FullIdentifier
 }
 
-func (proto *Proto) addPackage(p *parser) error {
-	pkg, err := p.parsePackage()
-	if err != nil {
+func (pkg *Package) parse(p *parser) error {
+	if _, ok := p.consume(token.Package); !ok {
+		return fmt.Errorf("todo")
+	}
+	if err := pkg.Identifier.parse(p); err != nil {
 		return err
 	}
-	proto.Packages = append(proto.Packages, pkg)
+	if _, ok := p.consume(token.Semicolon); !ok {
+		return fmt.Errorf("todo")
+	}
 	return nil
 }
 
-func (p *parser) parsePackage() (*Package, error) {
-	p.consumeKeyword("package")
-	ident := p.Scan()
-	switch ident.(type) {
-	case scanner.Identifier, scanner.FullIdentifier:
-	default:
-		return nil, fmt.Errorf("expected package identifier, got %q", ident)
+type Options []Option
+
+func (opts *Options) parse(p *parser) error {
+	var opt Option
+	if err := opt.parse(p); err != nil {
+		return err
 	}
-	p.consumePunctuation(scanner.Semicolon)
-	return &Package{Identifier: ident}, p.err
+	*opts = append(*opts, opt)
+	return nil
 }
 
 type Option struct {
-	Name  scanner.Token
-	Value scanner.Token
+	Prefix *FullIdentifier
+	Name   FullIdentifier
+	Value  Constant
 }
 
-func (proto *Proto) addOption(p *parser) error {
-	opt, err := p.parseOption()
-	if err != nil {
+func (opt *Option) parse(p *parser) error {
+	if _, ok := p.consume(token.Option); !ok {
+		return fmt.Errorf("todo")
+	}
+
+	next := p.peek()
+	if next.Kind == token.OpenParens {
+		p.scan()
+		if err := opt.Prefix.parse(p); err != nil {
+			return err
+		}
+		if _, ok := p.consume(token.CloseParens); !ok {
+			return fmt.Errorf("todo")
+		}
+		next = p.scan()
+	}
+	if next.Kind != token.Identifier {
+		return fmt.Errorf("expected identifer in option name, got %v %s", next.Kind, next.Text)
+	}
+	if err := opt.Name.parse(p); err != nil {
 		return err
 	}
-	proto.Options = append(proto.Options, opt)
-	return nil
-}
 
-func (p *parser) parseOption() (*Option, error) {
-	p.consumeKeyword("option")
-	name := p.Scan()
-	p.consumePunctuation(scanner.Equal)
-	tok := p.Scan()
-	switch tok.(type) {
-	// supported kinds of options
-	case scanner.FullIdentifier, scanner.Identifier,
-		scanner.Boolean, scanner.String, scanner.Number, scanner.Integer:
-	default:
-		return nil, fmt.Errorf("unsupported option value %T %q", tok, tok)
+	if _, ok := p.consume(token.Equals); !ok {
+		return fmt.Errorf("todo")
 	}
-	return &Option{name, tok}, nil
+	if err := opt.Value.parse(p); err != nil {
+		return err
+	}
+	if _, ok := p.consume(token.Semicolon); !ok {
+		return fmt.Errorf("todo")
+	}
+	return nil
 }
 
 // Parsing functions to make the code above much nicer.
 // Not proud of this, but what's a gopher to do?
 
-type parser struct {
-	s      *scanner.Scanner
-	peeked scanner.Token
-	err    error
+type FullIdentifier struct {
+	Identifiers []scanner.Token
 }
 
-func (p *parser) Scan() scanner.Token {
+func (ident *FullIdentifier) parse(p *parser) error {
+	next := p.scan()
+	if next.Kind != token.Identifier {
+		return fmt.Errorf("expected identifier, got %v", next.Kind)
+	}
+
+	ident.Identifiers = append(ident.Identifiers, next)
+	for {
+		dot := p.scan()
+		if dot.Kind != token.Dot {
+			return nil
+		}
+		name := p.scan()
+		if name.Kind != token.Identifier {
+			return fmt.Errorf("expected identifier, got %v", next.Kind)
+		}
+		ident.Identifiers = append(ident.Identifiers, next)
+	}
+}
+
+type Constant struct {
+	Value interface{}
+}
+
+type SignedNumber struct {
+	Sign, Number scanner.Token
+}
+
+//	Constant = fullIdent | ( [ minus | plus ] intLit ) | ( [ minus | plus ] floatLit ) | strLit | boolLit
+
+func (c *Constant) parse(p *parser) error {
+	switch next := p.scan(); {
+	case token.IsConstant(next.Kind):
+		c.Value = next
+	case next.Kind == token.Plus || next.Kind == token.Minus:
+		number := p.scan()
+		if !token.IsNumber(number.Kind) {
+			return fmt.Errorf("expected number after %v, got %v", next.Kind, number.Kind)
+		}
+		c.Value = SignedNumber{next, number}
+	}
+	return nil
+}
+
+type parser struct {
+	s      *scanner.Scanner
+	peeked *scanner.Token
+}
+
+func (p *parser) scan() scanner.Token {
 	if tok := p.peeked; tok != nil {
 		p.peeked = nil
-		//logrus.Infof("scan from peek: %v", tok)
-		return tok
+		return *tok
 	}
 	tok := p.s.Scan()
-	//logrus.Infof("scan from scanner: %v", tok)
 	return tok
 }
 
-func (p *parser) Peek() scanner.Token {
+func (p *parser) peek() scanner.Token {
 	if tok := p.peeked; tok != nil {
-		//logrus.Infof("peek from peek: %v", tok)
-		return tok
+		return *tok
 	}
-	p.peeked = p.s.Scan()
-	//logrus.Infof("peek from scan: %v", p.peeked)
-	return p.peeked
+	tok := p.s.Scan()
+	p.peeked = &tok
+	return tok
 }
 
-func (p *parser) consumeKeyword(value string) {
-	if p.err != nil {
-		return
-	}
-	tok := p.Scan()
-	if _, ok := tok.(scanner.Keyword); !ok || tok.String() != value {
-		p.err = fmt.Errorf("expected keyword %q, got %q", value, tok)
-	}
-}
-
-func (p *parser) consumePunctuation(value rune) {
-	if p.err != nil {
-		return
-	}
-	next := p.Scan()
-	tok, ok := next.(scanner.Punctuation)
-	if !ok || tok.Value != value {
-		p.err = fmt.Errorf("expected punctuation %q, got %q", value, next)
-	}
-}
-
-func (p *parser) consumeString(value string) {
-	text, err := p.readString()
-	if err != nil {
-		return
-	}
-	if text != value {
-		p.err = fmt.Errorf("expected string %q, got %q", value, text)
-	}
-}
-
-func (p *parser) readString() (string, error) {
-	if p.err != nil {
-		return "", p.err
-	}
-	tok := p.Scan()
-	if _, ok := tok.(scanner.String); !ok {
-		p.err = fmt.Errorf("expected string literal, got %q", tok)
-		return "", p.err
-	}
-	return tok.String(), nil
-}
-
-func (p *parser) readPunctuation() (rune, error) {
-	if p.err != nil {
-		return 0, p.err
-	}
-	tok := p.Scan()
-	if punc, ok := tok.(scanner.Punctuation); ok {
-		return punc.Value, nil
-	}
-	p.err = fmt.Errorf("expected string literal, got %q", tok)
-	return 0, p.err
-}
-
-func (p *parser) readIdentifier() (string, error) {
-	if p.err != nil {
-		return "", p.err
-	}
-	tok := p.Scan()
-	if _, ok := tok.(scanner.Identifier); !ok {
-		p.err = fmt.Errorf("expected identifier, got %q", tok)
-		return "", p.err
-	}
-	return tok.String(), nil
-}
-
-func (p *parser) readFullIdentifier() ([]string, error) {
-	ident, _ := p.readIdentifier()
-	idents := []string{ident}
-	for {
-		if punc, ok := p.Peek().(scanner.Punctuation); !ok || punc.Value != scanner.Dot {
-			return idents, nil
+func (p *parser) consume(tokens ...token.Kind) (*scanner.Token, bool) {
+	for _, tok := range tokens {
+		got := p.scan()
+		if got.Kind != tok {
+			return &got, false
 		}
-		p.Scan()
-
-		ident, err := p.readIdentifier()
-		if err != nil {
-			return nil, err
-		}
-		idents = append(idents, ident)
 	}
+	return nil, true
 }

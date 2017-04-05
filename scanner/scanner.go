@@ -2,7 +2,9 @@ package scanner
 
 import (
 	"bufio"
+	"fmt"
 	"io"
+	"strings"
 	"unicode"
 
 	"github.com/campoy/groto/token"
@@ -16,13 +18,38 @@ type Scanner struct {
 	r *bufio.Reader
 }
 
-func (s *Scanner) Scan() (token.Token, []rune) {
+type Token struct {
+	Kind token.Kind
+	Text string
+}
+
+func (t Token) String() string {
+	var name string
+	for _, r := range t.Kind.String() {
+		if unicode.IsUpper(r) {
+			name += fmt.Sprintf(" %c", unicode.ToLower(r))
+		} else {
+			name += string(r)
+		}
+	}
+	name = strings.TrimSpace(name)
+	if t.Text == "" {
+		return name
+	}
+	return fmt.Sprintf("%s (%s)", name, t.Text)
+}
+
+func (s *Scanner) emit(kind token.Kind, value []rune) Token {
+	return Token{Kind: kind, Text: string(value)}
+}
+
+func (s *Scanner) Scan() Token {
 	s.readWhile(isSpace)
 
 	r := s.peek()
 	switch {
 	case r == eof:
-		return token.EOF, nil
+		return s.emit(token.EOF, nil)
 	case isLetter(r):
 		return s.identifier()
 	case isDecimalDigit(r):
@@ -33,73 +60,61 @@ func (s *Scanner) Scan() (token.Token, []rune) {
 		return s.comment()
 	case token.Punctuation(string(r)) != token.Illegal:
 		s.read()
-		return token.Punctuation(string(r)), nil
+		return s.emit(token.Punctuation(string(r)), nil)
 	default:
 		s.read()
-		return token.Illegal, []rune{r}
+		return s.emit(token.Illegal, []rune{r})
 	}
 }
 
 // IDENTIFIERS
 
-func (s *Scanner) identifier() (token.Token, []rune) {
+func (s *Scanner) identifier() Token {
 	value := s.readWhile(or(isLetter, isDecimalDigit, equals(underscore)))
-	if s.peek() == dot {
-		return s.fullIdentifier(value)
-	}
 
 	switch text := string(value); {
 	case text == "true":
-		return token.True, nil
+		return s.emit(token.True, nil)
 	case text == "false":
-		return token.False, nil
+		return s.emit(token.False, nil)
 	case token.Keyword(text) != token.Illegal:
-		return token.Keyword(text), nil
+		return s.emit(token.Keyword(text), nil)
 	case token.Type(text) != token.Illegal:
-		return token.Type(text), nil
+		return s.emit(token.Type(text), nil)
 	default:
-		return token.Identifier, value
+		return s.emit(token.Identifier, value)
 	}
-}
-
-func (s *Scanner) fullIdentifier(value []rune) (token.Token, []rune) {
-	for s.peek() == dot {
-		value = append(value, s.read())
-		cont := s.readWhile(or(isLetter, isDecimalDigit, equals(underscore)))
-		value = append(value, cont...)
-	}
-	return token.FullIdentifier, value
 }
 
 // STRINGS
 
-func (s *Scanner) string() (token.Token, []rune) {
+func (s *Scanner) string() Token {
 	first := s.read()
 	value := []rune{first}
 	for {
 		value = append(value, s.readUntil(equals(first))...)
 		value = append(value, s.read())
 		if len(value) == 2 || value[len(value)-2] != backslash {
-			return token.StringLiteral, value
+			return s.emit(token.StringLiteral, value)
 		}
 	}
 }
 
 // COMMENTS
 
-func (s *Scanner) comment() (token.Token, []rune) {
+func (s *Scanner) comment() Token {
 	value := []rune{s.read(), s.read()}
 	if string(value) != "//" {
-		return token.Illegal, value
+		return s.emit(token.Illegal, value)
 	}
 
 	value = append(value, s.readUntil(equals('\n'))...)
-	return token.Comment, value
+	return s.emit(token.Comment, value)
 }
 
 // NUMBERS
 
-func (s *Scanner) number() (token.Token, []rune) {
+func (s *Scanner) number() Token {
 	first := s.read()
 	second := s.peek()
 
@@ -130,28 +145,28 @@ func (s *Scanner) number() (token.Token, []rune) {
 		sign := s.read()
 		value = append(value, sign)
 		if sign != '+' && sign != '-' {
-			return token.Illegal, value
+			return s.emit(token.Illegal, value)
 		}
 		value = append(value, s.readWhile(isDecimalDigit)...)
 	}
 
-	return tok, value
+	return s.emit(tok, value)
 }
 
-func (s *Scanner) octal(value []rune) (token.Token, []rune) {
+func (s *Scanner) octal(value []rune) Token {
 	value = append(value, s.readWhile(isOctalDigit)...)
 	if isDecimalDigit(s.peek()) {
-		return token.Illegal, append(value, s.read())
+		return s.emit(token.Illegal, append(value, s.read()))
 	}
-	return token.OctalLiteral, value
+	return s.emit(token.OctalLiteral, value)
 }
 
-func (s *Scanner) hex(value []rune) (token.Token, []rune) {
+func (s *Scanner) hex(value []rune) Token {
 	value = append(value, s.readWhile(isHexDigit)...)
 	if len(value) == 2 {
-		return token.Illegal, value
+		return s.emit(token.Illegal, value)
 	}
-	return token.HexLiteral, value
+	return s.emit(token.HexLiteral, value)
 }
 
 // Utility functions for the scanner

@@ -8,7 +8,28 @@ import (
 	"reflect"
 
 	"github.com/campoy/groto/scanner"
+	"github.com/campoy/groto/token"
 )
+
+func make(kind token.Kind, text string) scanner.Token {
+	return scanner.Token{Kind: kind, Text: text}
+}
+
+func ptr(tok scanner.Token) *scanner.Token { return &tok }
+
+func checkErrors(t *testing.T, want, got error) bool {
+	switch {
+	case want == nil && got == nil:
+		return true
+	case want == nil && got != nil:
+		t.Fatalf("unexpected error: %v", got)
+	case want != nil && got == nil:
+		t.Fatalf("expected error %v, got nothing", want)
+	case want.Error() != got.Error():
+		t.Fatalf("expected error %q; got %q", want, got)
+	}
+	return false
+}
 
 func TestParseSyntax(t *testing.T) {
 	tests := []struct {
@@ -17,23 +38,28 @@ func TestParseSyntax(t *testing.T) {
 		out  *Syntax
 		err  error
 	}{
-		{"good syntax", `syntax = "proto3";`, &Syntax{"proto3"}, nil},
-		{"missing equal", `syntax "proto3";`, nil, errors.New(`expected punctuation '=', got "proto3"`)},
-		{"bad text", `syntax = "proto2";`, nil, errors.New(`expected string "proto3", got "proto2"`)},
-		{"missing semicolon", `syntax = "proto3"`, nil, errors.New(`expected punctuation ';', got "EOF"`)},
-		{"missing quotes", `syntax = proto3;`, nil, errors.New(`expected string literal, got "proto3"`)},
+		{name: "good syntax", in: `syntax = "proto3";`,
+			out: &Syntax{make(token.StringLiteral, `"proto3"`)},
+		},
+		{name: "missing equal", in: `syntax "proto3";`,
+			err: errors.New(`expected '=', got "proto3" instead`),
+		},
+		{name: "bad text", in: `syntax = "proto2";`,
+			err: errors.New(`expected literal string "proto3", got "proto2" instead`),
+		},
+		{name: "missing semicolon", in: `syntax = "proto3"`,
+			err: errors.New(`missing semicolon at the end of the syntax statement`),
+		},
+		{name: "missing quotes", in: `syntax = proto3;`,
+			err: errors.New(`expected literal string "proto3", got a Identifier instead`),
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			p := &parser{s: scanner.New(strings.NewReader(tt.in))}
-			s, err := p.parseSyntax()
-			if err != nil {
-				if tt.err == nil {
-					t.Fatalf("unexpected error: %v", err)
-				}
-				if err.Error() != tt.err.Error() {
-					t.Fatalf("expected error %q; got %q", tt.err, err)
-				}
+			var s Syntax
+			err := s.parse(p)
+			if !checkErrors(t, tt.err, err) {
 				return
 			}
 			if s.Value != tt.out.Value {
@@ -50,31 +76,38 @@ func TestParseImport(t *testing.T) {
 		out  *Import
 		err  error
 	}{
-		{"good syntax", `import "path";`, &Import{Path: "path"}, nil},
-		{"good public syntax", `import public "path";`, &Import{Path: "path", Modifier: "public"}, nil},
-		{"good weak syntax", `import weak "path";`, &Import{Path: "path", Modifier: "weak"}, nil},
-		{"bad modifier", `import bytes "path";`, nil, errors.New(`unexpected "bytes"`)},
-		{"bad modifier keyword", `import enum "path";`, nil, errors.New(`unexpected keyword "enum"`)},
-		{"bad import path", `import public path;`, nil, errors.New(`incorrect import path; got "path"`)},
+		{name: "good syntax", in: `import "path";`,
+			out: &Import{Path: make(token.StringLiteral, `"path"`)},
+		},
+		{name: "good public syntax", in: `import public "path";`,
+			out: &Import{Path: make(token.StringLiteral, `"path"`), Modifier: make(token.Public, "")},
+		},
+		{name: "good weak syntax", in: `import weak "path";`,
+			out: &Import{Path: make(token.StringLiteral, `"path"`), Modifier: make(token.Weak, "")},
+		},
+		{name: "bad modifier", in: `import bytes "path";`,
+			err: errors.New(`expected imported package name, got bytes`),
+		},
+		{name: "bad modifier keyword", in: `import enum "path";`,
+			err: errors.New(`expected imported package name, got enum`),
+		},
+		{name: "bad import path", in: `import public path;`,
+			err: errors.New(`expected imported package name, got identifier (path)`),
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			p := &parser{s: scanner.New(strings.NewReader(tt.in))}
-			imp, err := p.parseImport()
-			if err != nil {
-				if tt.err == nil {
-					t.Fatalf("unexpected error: %v", err)
-				}
-				if err.Error() != tt.err.Error() {
-					t.Fatalf("expected error %q; got %q", tt.err, err)
-				}
+			var imp Import
+			err := imp.parse(p)
+			if !checkErrors(t, tt.err, err) {
 				return
 			}
 			if imp.Path != tt.out.Path {
 				t.Fatalf("expected import path %q; got %q", tt.out.Path, imp.Path)
 			}
 			if imp.Modifier != tt.out.Modifier {
-				t.Fatalf("expected import modifier %q; got %q", tt.out.Modifier, imp.Modifier)
+				t.Fatalf("expected import modifier %v; got %v", tt.out.Modifier, imp.Modifier)
 			}
 		})
 	}
@@ -88,23 +121,28 @@ func TestParsePackage(t *testing.T) {
 		err  error
 	}{
 
-		{"single identifier", `package foo;`, &Package{scanner.Identifier{scanner.Runes("foo")}}, nil},
-		{"full identifer", `package com.example.foo;`, &Package{scanner.FullIdentifier{
-			[]scanner.Identifier{{scanner.Runes("com")}, {scanner.Runes("example")}, {scanner.Runes("foo")}}},
-		}, nil},
-		{"bad identifier", `package "foo";`, nil, errors.New("expected package identifier, got \"foo\"")},
+		{name: "single identifier", in: `package foo;`,
+			out: &Package{FullIdentifier{[]scanner.Token{
+				make(token.Identifier, "foo"),
+			}}},
+		},
+		{name: "full identifer", in: `package com.example.foo;`,
+			out: &Package{FullIdentifier{[]scanner.Token{
+				make(token.Identifier, "com"),
+				make(token.Identifier, "examples"),
+				make(token.Identifier, "foo"),
+			}}},
+		},
+		{name: "bad identifier", in: `package "foo";`,
+			err: errors.New("expected package identifier, got \"foo\""),
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			p := &parser{s: scanner.New(strings.NewReader(tt.in))}
-			pkg, err := p.parsePackage()
-			if err != nil {
-				if tt.err == nil {
-					t.Fatalf("unexpected error: %v", err)
-				}
-				if err.Error() != tt.err.Error() {
-					t.Fatalf("expected error %q; got %q", tt.err, err)
-				}
+			var pkg Package
+			err := pkg.parse(p)
+			if !checkErrors(t, tt.err, err) {
 				return
 			}
 			if !reflect.DeepEqual(pkg.Identifier, tt.out.Identifier) {
@@ -122,36 +160,40 @@ func TestParseOption(t *testing.T) {
 		err  error
 	}{
 
-		{"good syntax string", `option java_package = "com.example.foo";`,
-			&Option{
-				Name:  scanner.Identifier{scanner.Runes("java_package")},
-				Value: scanner.String{scanner.Runes("com.example.foo")},
-			}, nil},
-		{"good syntax full identifer", `option java_package = foo.bar;`,
-			&Option{
-				Name:  scanner.Identifier{scanner.Runes("java_package")},
-				Value: scanner.FullIdentifier{[]scanner.Identifier{{scanner.Runes("foo")}, {scanner.Runes("bar")}}},
-			}, nil},
-		{"good syntax integer", `option options.number = 42;`,
-			&Option{
-				Name:  scanner.FullIdentifier{[]scanner.Identifier{{scanner.Runes("options")}, {scanner.Runes("number")}}},
-				Value: scanner.Decimal{scanner.Runes("42")},
-			}, nil},
-		{"bad syntax", `option java_package = syntax;`, nil, errors.New(`unsupported option value scanner.Keyword "syntax"`)},
+		{name: "good syntax string", in: `option java_package = "com.example.foo";`,
+			out: &Option{
+				Name:  FullIdentifier{[]scanner.Token{make(token.Identifier, "java_package")}},
+				Value: Constant{make(token.StringLiteral, `"com.example.foo"`)},
+			},
+		},
+		{name: "good syntax full identifer", in: `option java_package = foo.bar;`,
+			out: &Option{
+				Name: FullIdentifier{[]scanner.Token{make(token.Identifier, "java_package")}},
+				Value: Constant{FullIdentifier{[]scanner.Token{
+					make(token.Identifier, "foo"),
+					make(token.Identifier, "bar"),
+				}}},
+			},
+		},
+		{name: "good syntax integer", in: `option options.number = 42;`,
+			out: &Option{
+				Name: FullIdentifier{[]scanner.Token{
+					make(token.Identifier, "options"),
+					make(token.Identifier, "number"),
+				}},
+				Value: Constant{make(token.DecimalLiteral, "42")},
+			},
+		},
+		{name: "bad syntax", in: `option java_package = syntax;`,
+			err: errors.New(`unsupported option value scanner.Keyword "syntax"`),
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			p := &parser{s: scanner.New(strings.NewReader(tt.in))}
-			opt, err := p.parseOption()
-			if err != nil {
-				if tt.err == nil {
-					t.Fatalf("unexpected error: %v", err)
-				}
-				if err.Error() != tt.err.Error() {
-					t.Fatalf("expected error %q; got %q", tt.err, err)
-				}
-				return
-			}
+			var opt Option
+			err := opt.parse(p)
+			checkErrors(t, tt.err, err)
 			if !reflect.DeepEqual(opt.Name, tt.out.Name) {
 				t.Fatalf("expected option name %q; got %q", tt.out.Name, opt.Name)
 			}
