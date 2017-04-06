@@ -254,10 +254,8 @@ func (msg *Message) parse(p *peeker) error {
 	return msg.Def.parse(p)
 }
 
-type MessageDef struct {
-	// can be Field, Enum, Message, Option, Oneof, Mapfield, Reserved, or nil
-	Definitions []interface{}
-}
+// MessageDef can be Field, Enum, Message, Option, Oneof, Mapfield, Reserved, or nil.
+type MessageDef []interface{}
 
 func (def *MessageDef) parse(p *peeker) error {
 	logf("> messagedef.parse")
@@ -298,7 +296,7 @@ func (def *MessageDef) parse(p *peeker) error {
 			if err := target.parse(p); err != nil {
 				return err
 			}
-			def.Definitions = append(def.Definitions, target)
+			*def = append(*def, target)
 		}
 	}
 }
@@ -340,22 +338,11 @@ func (f *Field) parse(p *peeker) error {
 	}
 	f.Number = number
 
-	next = p.scan()
-	if next.Kind == token.OpenBrackets {
-		for {
-			if err := f.Options.parse(p); err != nil {
-				return nil
-			}
-			if p.peek().Kind != token.Comma {
-				break
-			}
-		}
-		if tok, ok := p.consume(token.CloseBracket); !ok {
-			return fmt.Errorf("expected ']' to close field options, got %s", tok)
-		}
-		next = p.scan()
+	if err := f.Options.parse(p); err != nil {
+		return err
 	}
-	if next.Kind != token.Semicolon {
+
+	if _, ok := p.consume(token.Semicolon); !ok {
 		return fmt.Errorf("missing semicolon at the end of field definition")
 	}
 	return nil
@@ -364,6 +351,11 @@ func (f *Field) parse(p *peeker) error {
 type FieldOptions []Option
 
 func (opts *FieldOptions) parse(p *peeker) error {
+	if p.peek().Kind != token.OpenBrackets {
+		return nil
+	}
+	p.scan()
+
 	for {
 		var opt Option
 		if err := opt.parse(p); err != nil {
@@ -371,14 +363,25 @@ func (opts *FieldOptions) parse(p *peeker) error {
 		}
 		*opts = append(*opts, opt)
 		if p.peek().Kind != token.Comma {
-			return nil
+			break
 		}
 		p.scan()
 	}
+
+	if tok, ok := p.consume(token.CloseBracket); !ok {
+		return fmt.Errorf("expected ']' to close field options, got %s", tok)
+	}
+	return nil
 }
 
-// Parsing functions to make the code above much nicer.
-// Not proud of this, but what's a gopher to do?
+type Enum struct {
+	Name scanner.Token
+	Def  EnumDef
+}
+
+type EnumDef struct {
+	Defs []interface{}
+}
 
 type FullIdentifier struct {
 	Identifiers []scanner.Token

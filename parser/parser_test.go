@@ -11,7 +11,7 @@ import (
 	"github.com/Sirupsen/logrus"
 	"github.com/campoy/groto/scanner"
 	"github.com/campoy/groto/token"
-	"github.com/pmezard/go-difflib/difflib"
+	"github.com/kr/pretty"
 )
 
 func make(kind token.Kind, text string) scanner.Token {
@@ -152,14 +152,14 @@ func TestParse(t *testing.T) {
 				}`,
 				out: &Message{
 					Name: make(token.Identifier, "Foo"),
-					Def: MessageDef{[]interface{}{
+					Def: MessageDef{
 						&Field{
 							Repeated: true,
 							Type:     make(token.Int32, ""),
 							Name:     make(token.Identifier, "ids"),
 							Number:   make(token.DecimalLiteral, "1"),
 						},
-					}},
+					},
 				},
 			},
 			{name: "message with two fields", target: new(Message),
@@ -169,7 +169,7 @@ func TestParse(t *testing.T) {
 				}`,
 				out: &Message{
 					Name: make(token.Identifier, "Foo"),
-					Def: MessageDef{[]interface{}{
+					Def: MessageDef{
 						&Field{
 							Type:   make(token.Bool, ""),
 							Name:   make(token.Identifier, "foo"),
@@ -181,7 +181,7 @@ func TestParse(t *testing.T) {
 							Name:     make(token.Identifier, "ids"),
 							Number:   make(token.DecimalLiteral, "2"),
 						},
-					}},
+					},
 				},
 			},
 			{name: "simple message with one option", target: new(Message),
@@ -190,7 +190,7 @@ func TestParse(t *testing.T) {
 				}`,
 				out: &Message{
 					Name: make(token.Identifier, "Foo"),
-					Def: MessageDef{[]interface{}{
+					Def: MessageDef{
 						&Field{
 							Repeated: true,
 							Type:     make(token.Int32, ""),
@@ -199,10 +199,9 @@ func TestParse(t *testing.T) {
 							Options: FieldOptions{{
 								Name:  FullIdentifier{[]scanner.Token{make(token.Identifier, "packed")}},
 								Value: Constant{make(token.True, "")},
-							},
-							},
+							}},
 						},
-					}},
+					},
 				},
 			},
 			{name: "simple message with two options", target: new(Message),
@@ -211,7 +210,7 @@ func TestParse(t *testing.T) {
 				}`,
 				out: &Message{
 					Name: make(token.Identifier, "Foo"),
-					Def: MessageDef{[]interface{}{
+					Def: MessageDef{
 						&Field{
 							Repeated: true,
 							Type:     make(token.Int32, ""),
@@ -223,10 +222,9 @@ func TestParse(t *testing.T) {
 							}, {
 								Name:  FullIdentifier{[]scanner.Token{make(token.Identifier, "json")}},
 								Value: Constant{make(token.StringLiteral, `"-"`)},
-							},
-							},
+							}},
 						},
-					}},
+					},
 				},
 			},
 		},
@@ -242,16 +240,9 @@ func TestParse(t *testing.T) {
 						return
 					}
 					if !reflect.DeepEqual(tt.target, tt.out) {
-						a, b := print(tt.out), print(tt.target)
-						diff, err := difflib.GetUnifiedDiffString(difflib.UnifiedDiff{
-							A:       difflib.SplitLines(a),
-							B:       difflib.SplitLines(a),
-							Context: 3,
-						})
-						if err != nil {
-							t.Fatalf("could not diff: %v", err)
-						}
-						t.Fatalf("\nexpected:\n\t%v\ngot:\n\t%v\ndiff:\n\t%v", a, b, diff)
+						diff := pretty.Diff(tt.target, tt.out)
+						// t.Fatalf("\nexpected:\n\t%v\ngot:\n\t%v\ndiff:\n\t%v", a, b, diff)
+						t.Fatal(diff)
 					}
 				})
 			}
