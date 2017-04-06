@@ -123,14 +123,14 @@ type Package struct {
 }
 
 func (pkg *Package) parse(p *parser) error {
-	if _, ok := p.consume(token.Package); !ok {
-		return fmt.Errorf("todo")
+	if tok, ok := p.consume(token.Package); !ok {
+		return fmt.Errorf("expected keyword package, got %s", tok)
 	}
 	if err := pkg.Identifier.parse(p); err != nil {
 		return err
 	}
 	if _, ok := p.consume(token.Semicolon); !ok {
-		return fmt.Errorf("todo")
+		return fmt.Errorf("missing semicolon at the end of package statement")
 	}
 	return nil
 }
@@ -153,8 +153,8 @@ type Option struct {
 }
 
 func (opt *Option) parse(p *parser) error {
-	if _, ok := p.consume(token.Option); !ok {
-		return fmt.Errorf("todo")
+	if tok, ok := p.consume(token.Option); !ok {
+		return fmt.Errorf("expected keyword option, got %s", tok)
 	}
 
 	next := p.peek()
@@ -163,8 +163,8 @@ func (opt *Option) parse(p *parser) error {
 		if err := opt.Prefix.parse(p); err != nil {
 			return err
 		}
-		if _, ok := p.consume(token.CloseParens); !ok {
-			return fmt.Errorf("todo")
+		if tok, ok := p.consume(token.CloseParens); !ok {
+			return fmt.Errorf("expected closing parenthesis after %s, got %s", opt.Prefix, tok)
 		}
 		next = p.scan()
 	}
@@ -175,14 +175,14 @@ func (opt *Option) parse(p *parser) error {
 		return err
 	}
 
-	if _, ok := p.consume(token.Equals); !ok {
-		return fmt.Errorf("todo")
+	if tok, ok := p.consume(token.Equals); !ok {
+		return fmt.Errorf("expected '=' between option name and value, got %s", tok)
 	}
 	if err := opt.Value.parse(p); err != nil {
 		return err
 	}
-	if _, ok := p.consume(token.Semicolon); !ok {
-		return fmt.Errorf("todo")
+	if tok, ok := p.consume(token.Semicolon); !ok {
+		return fmt.Errorf("missing semicolon at the end of option statement, got %s", tok)
 	}
 	return nil
 }
@@ -197,20 +197,21 @@ type FullIdentifier struct {
 func (ident *FullIdentifier) parse(p *parser) error {
 	next := p.scan()
 	if next.Kind != token.Identifier {
-		return fmt.Errorf("expected identifier, got %v", next.Kind)
+		return fmt.Errorf("expected identifier, got %s", next)
 	}
 
 	ident.Identifiers = append(ident.Identifiers, next)
 	for {
-		dot := p.scan()
+		dot := p.peek()
 		if dot.Kind != token.Dot {
 			return nil
 		}
+		p.scan()
 		name := p.scan()
 		if name.Kind != token.Identifier {
-			return fmt.Errorf("expected identifier, got %v", next.Kind)
+			return fmt.Errorf("expected identifier, got %s", next)
 		}
-		ident.Identifiers = append(ident.Identifiers, next)
+		ident.Identifiers = append(ident.Identifiers, name)
 	}
 }
 
@@ -222,18 +223,25 @@ type SignedNumber struct {
 	Sign, Number scanner.Token
 }
 
-//	Constant = fullIdent | ( [ minus | plus ] intLit ) | ( [ minus | plus ] floatLit ) | strLit | boolLit
-
 func (c *Constant) parse(p *parser) error {
-	switch next := p.scan(); {
+	switch next := p.peek(); {
 	case token.IsConstant(next.Kind):
-		c.Value = next
+		c.Value = p.scan()
 	case next.Kind == token.Plus || next.Kind == token.Minus:
+		p.scan()
 		number := p.scan()
 		if !token.IsNumber(number.Kind) {
 			return fmt.Errorf("expected number after %v, got %v", next.Kind, number.Kind)
 		}
 		c.Value = SignedNumber{next, number}
+	case next.Kind == token.Identifier:
+		var ident FullIdentifier
+		if err := ident.parse(p); err != nil {
+			return err
+		}
+		c.Value = ident
+	default:
+		return fmt.Errorf("expected a valid constant value, but got %s", next)
 	}
 	return nil
 }

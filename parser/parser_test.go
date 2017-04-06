@@ -129,12 +129,12 @@ func TestParsePackage(t *testing.T) {
 		{name: "full identifer", in: `package com.example.foo;`,
 			out: &Package{FullIdentifier{[]scanner.Token{
 				make(token.Identifier, "com"),
-				make(token.Identifier, "examples"),
+				make(token.Identifier, "example"),
 				make(token.Identifier, "foo"),
 			}}},
 		},
 		{name: "bad identifier", in: `package "foo";`,
-			err: errors.New("expected package identifier, got \"foo\""),
+			err: errors.New("expected identifier, got string literal (\"foo\")"),
 		},
 	}
 	for _, tt := range tests {
@@ -185,7 +185,7 @@ func TestParseOption(t *testing.T) {
 			},
 		},
 		{name: "bad syntax", in: `option java_package = syntax;`,
-			err: errors.New(`unsupported option value scanner.Keyword "syntax"`),
+			err: errors.New(`expected a valid constant value, but got syntax`),
 		},
 	}
 	for _, tt := range tests {
@@ -193,7 +193,9 @@ func TestParseOption(t *testing.T) {
 			p := &parser{s: scanner.New(strings.NewReader(tt.in))}
 			var opt Option
 			err := opt.parse(p)
-			checkErrors(t, tt.err, err)
+			if !checkErrors(t, tt.err, err) {
+				return
+			}
 			if !reflect.DeepEqual(opt.Name, tt.out.Name) {
 				t.Fatalf("expected option name %q; got %q", tt.out.Name, opt.Name)
 			}

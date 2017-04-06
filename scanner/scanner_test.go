@@ -100,6 +100,15 @@ func TestScanner(t *testing.T) {
 			{token.Illegal, "/*"},
 			{token.Identifier, "badcomment"},
 		}},
+		{"option command", `option options.number = 42;`, []Token{
+			{token.Option, ""},
+			{token.Identifier, "options"},
+			{token.Dot, ""},
+			{token.Identifier, "number"},
+			{token.Equals, ""},
+			{token.DecimalLiteral, "42"},
+			{token.Semicolon, ""},
+		}},
 	}
 
 	for _, tt := range tests {
@@ -108,8 +117,8 @@ func TestScanner(t *testing.T) {
 			for i, want := range tt.out {
 				got := s.Scan()
 				if got.Kind == token.EOF {
-					if len(tt.out) > i+1 {
-						t.Fatalf("remaining tokens: %v", tt.out[i+1:])
+					if len(tt.out) > i {
+						t.Fatalf("unmatched tokens: %v", tt.out[i:])
 					}
 					break
 				}

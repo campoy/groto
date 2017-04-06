@@ -43,7 +43,7 @@ func (s *Scanner) emit(kind token.Kind, value []rune) Token {
 	return Token{Kind: kind, Text: string(value)}
 }
 
-func (s *Scanner) Scan() Token {
+func (s *Scanner) Scan() (tok Token) {
 	s.readWhile(isSpace)
 
 	r := s.peek()
@@ -130,15 +130,17 @@ func (s *Scanner) number() Token {
 	value := []rune{first}
 	value = append(value, s.readWhile(isDecimalDigit)...)
 
-	next := s.read()
+	next := s.peek()
 	if next == dot {
+		s.read()
 		tok = token.FloatLiteral
 		value = append(value, dot)
 		value = append(value, s.readWhile(isDecimalDigit)...)
-		next = s.read()
+		next = s.peek()
 	}
 
 	if next == 'E' || next == 'e' {
+		s.read()
 		tok = token.FloatLiteral
 		value = append(value, next)
 
