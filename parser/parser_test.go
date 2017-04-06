@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/campoy/groto/scanner"
 	"github.com/campoy/groto/token"
+	"github.com/pmezard/go-difflib/difflib"
 )
 
 func make(kind token.Kind, text string) scanner.Token {
@@ -31,224 +33,188 @@ func checkErrors(t *testing.T, want, got error) bool {
 	return false
 }
 
-func TestParseSyntax(t *testing.T) {
-	tests := []struct {
-		name string
-		in   string
-		out  *Syntax
-		err  error
+func TestParse(t *testing.T) {
+	tests := map[string][]struct {
+		name   string
+		in     string
+		target parsable
+		out    parsable
+		err    error
 	}{
-		{name: "good syntax", in: `syntax = "proto3";`,
-			out: &Syntax{make(token.StringLiteral, `"proto3"`)},
-		},
-		{name: "missing equal", in: `syntax "proto3";`,
-			err: errors.New(`expected '=', got "proto3" instead`),
-		},
-		{name: "bad text", in: `syntax = "proto2";`,
-			err: errors.New(`expected literal string "proto3", got "proto2" instead`),
-		},
-		{name: "missing semicolon", in: `syntax = "proto3"`,
-			err: errors.New(`missing semicolon at the end of the syntax statement`),
-		},
-		{name: "missing quotes", in: `syntax = proto3;`,
-			err: errors.New(`expected literal string "proto3", got a Identifier instead`),
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			p := &parser{s: scanner.New(strings.NewReader(tt.in))}
-			var s Syntax
-			err := s.parse(p)
-			if !checkErrors(t, tt.err, err) {
-				return
-			}
-			if s.Value != tt.out.Value {
-				t.Fatalf("expected syntax %q; got %q", tt.out.Value, s.Value)
-			}
-		})
-	}
-}
-
-func TestParseImport(t *testing.T) {
-	tests := []struct {
-		name string
-		in   string
-		out  *Import
-		err  error
-	}{
-		{name: "good syntax", in: `import "path";`,
-			out: &Import{Path: make(token.StringLiteral, `"path"`)},
-		},
-		{name: "good public syntax", in: `import public "path";`,
-			out: &Import{Path: make(token.StringLiteral, `"path"`), Modifier: make(token.Public, "")},
-		},
-		{name: "good weak syntax", in: `import weak "path";`,
-			out: &Import{Path: make(token.StringLiteral, `"path"`), Modifier: make(token.Weak, "")},
-		},
-		{name: "bad modifier", in: `import bytes "path";`,
-			err: errors.New(`expected imported package name, got bytes`),
-		},
-		{name: "bad modifier keyword", in: `import enum "path";`,
-			err: errors.New(`expected imported package name, got enum`),
-		},
-		{name: "bad import path", in: `import public path;`,
-			err: errors.New(`expected imported package name, got identifier (path)`),
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			p := &parser{s: scanner.New(strings.NewReader(tt.in))}
-			var imp Import
-			err := imp.parse(p)
-			if !checkErrors(t, tt.err, err) {
-				return
-			}
-			if imp.Path != tt.out.Path {
-				t.Fatalf("expected import path %q; got %q", tt.out.Path, imp.Path)
-			}
-			if imp.Modifier != tt.out.Modifier {
-				t.Fatalf("expected import modifier %v; got %v", tt.out.Modifier, imp.Modifier)
-			}
-		})
-	}
-}
-
-func TestParsePackage(t *testing.T) {
-	tests := []struct {
-		name string
-		in   string
-		out  *Package
-		err  error
-	}{
-
-		{name: "single identifier", in: `package foo;`,
-			out: &Package{FullIdentifier{[]scanner.Token{
-				make(token.Identifier, "foo"),
-			}}},
-		},
-		{name: "full identifer", in: `package com.example.foo;`,
-			out: &Package{FullIdentifier{[]scanner.Token{
-				make(token.Identifier, "com"),
-				make(token.Identifier, "example"),
-				make(token.Identifier, "foo"),
-			}}},
-		},
-		{name: "bad identifier", in: `package "foo";`,
-			err: errors.New("expected identifier, got string literal (\"foo\")"),
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			p := &parser{s: scanner.New(strings.NewReader(tt.in))}
-			var pkg Package
-			err := pkg.parse(p)
-			if !checkErrors(t, tt.err, err) {
-				return
-			}
-			if !reflect.DeepEqual(pkg.Identifier, tt.out.Identifier) {
-				t.Fatalf("expected package identifer %q; got %q", tt.out.Identifier, pkg.Identifier)
-			}
-		})
-	}
-}
-
-func TestParseOption(t *testing.T) {
-	tests := []struct {
-		name string
-		in   string
-		out  *Option
-		err  error
-	}{
-
-		{name: "good syntax string", in: `option java_package = "com.example.foo";`,
-			out: &Option{
-				Name:  FullIdentifier{[]scanner.Token{make(token.Identifier, "java_package")}},
-				Value: Constant{make(token.StringLiteral, `"com.example.foo"`)},
+		"Syntax": {
+			{name: "good syntax", in: `syntax = "proto3";`, target: new(Syntax),
+				out: &Syntax{make(token.StringLiteral, `"proto3"`)},
+			},
+			{name: "missing equal", in: `syntax "proto3";`, target: new(Syntax),
+				err: errors.New(`expected '=', got "proto3" instead`),
+			},
+			{name: "bad text", in: `syntax = "proto2";`, target: new(Syntax),
+				err: errors.New(`expected literal string "proto3", got "proto2" instead`),
+			},
+			{name: "missing semicolon", in: `syntax = "proto3"`, target: new(Syntax),
+				err: errors.New(`missing semicolon at the end of the syntax statement`),
+			},
+			{name: "missing quotes", in: `syntax = proto3;`, target: new(Syntax),
+				err: errors.New(`expected literal string "proto3", got a Identifier instead`),
 			},
 		},
-		{name: "good syntax full identifer", in: `option java_package = foo.bar;`,
-			out: &Option{
-				Name: FullIdentifier{[]scanner.Token{make(token.Identifier, "java_package")}},
-				Value: Constant{FullIdentifier{[]scanner.Token{
+
+		"Import": {
+			{name: "good syntax", in: `import "path";`, target: new(Import),
+				out: &Import{Path: make(token.StringLiteral, `"path"`)},
+			},
+			{name: "good public syntax", in: `import public "path";`, target: new(Import),
+				out: &Import{Path: make(token.StringLiteral, `"path"`), Modifier: make(token.Public, "")},
+			},
+			{name: "good weak syntax", in: `import weak "path";`, target: new(Import),
+				out: &Import{Path: make(token.StringLiteral, `"path"`), Modifier: make(token.Weak, "")},
+			},
+			{name: "bad modifier", in: `import bytes "path";`, target: new(Import),
+				err: errors.New(`expected imported package name, got bytes`),
+			},
+			{name: "bad modifier keyword", in: `import enum "path";`, target: new(Import),
+				err: errors.New(`expected imported package name, got enum`),
+			},
+			{name: "bad import path", in: `import public path;`, target: new(Import),
+				err: errors.New(`expected imported package name, got identifier (path)`),
+			},
+		},
+
+		"Package": {
+			{name: "single identifier", in: `package foo;`, target: new(Package),
+				out: &Package{FullIdentifier{[]scanner.Token{
 					make(token.Identifier, "foo"),
-					make(token.Identifier, "bar"),
 				}}},
 			},
-		},
-		{name: "good syntax integer", in: `option options.number = 42;`,
-			out: &Option{
-				Name: FullIdentifier{[]scanner.Token{
-					make(token.Identifier, "options"),
-					make(token.Identifier, "number"),
-				}},
-				Value: Constant{make(token.DecimalLiteral, "42")},
+			{name: "full identifer", in: `package com.example.foo;`, target: new(Package),
+				out: &Package{FullIdentifier{[]scanner.Token{
+					make(token.Identifier, "com"),
+					make(token.Identifier, "example"),
+					make(token.Identifier, "foo"),
+				}}},
+			},
+			{name: "bad identifier", in: `package "foo";`, target: new(Package),
+				err: errors.New("expected identifier, got string literal (\"foo\")"),
 			},
 		},
-		{name: "bad syntax", in: `option java_package = syntax;`,
-			err: errors.New(`expected a valid constant value, but got syntax`),
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			p := &parser{s: scanner.New(strings.NewReader(tt.in))}
-			var opt Option
-			err := opt.parse(p)
-			if !checkErrors(t, tt.err, err) {
-				return
-			}
-			if !reflect.DeepEqual(opt.Name, tt.out.Name) {
-				t.Fatalf("expected option name %q; got %q", tt.out.Name, opt.Name)
-			}
-			if !reflect.DeepEqual(opt.Value, tt.out.Value) {
-				t.Fatalf("expected option value %q; got %q", tt.out.Value, opt.Value)
-			}
-		})
-	}
-}
 
-func TestParseMessages(t *testing.T) {
-	tests := []struct {
-		name string
-		in   string
-		out  *Message
-		err  error
-	}{
-		{name: "empty message", in: `message Foo {}`,
-			out: &Message{
-				Name: make(token.Identifier, "Foo"),
+		"Option": {
+			{name: "good syntax string", in: `option java_package = "com.example.foo";`, target: new(Option),
+				out: &Option{
+					Name:  FullIdentifier{[]scanner.Token{make(token.Identifier, "java_package")}},
+					Value: Constant{make(token.StringLiteral, `"com.example.foo"`)},
+				},
+			},
+			{name: "good syntax full identifer", in: `option java_package = foo.bar;`, target: new(Option),
+				out: &Option{
+					Name: FullIdentifier{[]scanner.Token{make(token.Identifier, "java_package")}},
+					Value: Constant{FullIdentifier{[]scanner.Token{
+						make(token.Identifier, "foo"),
+						make(token.Identifier, "bar"),
+					}}},
+				},
+			},
+			{name: "good syntax integer", in: `option options.number = 42;`, target: new(Option),
+				out: &Option{
+					Name: FullIdentifier{[]scanner.Token{
+						make(token.Identifier, "options"),
+						make(token.Identifier, "number"),
+					}},
+					Value: Constant{make(token.DecimalLiteral, "42")},
+				},
+			},
+			{name: "good syntax signed float", in: `option java_package = -10.5;`, target: new(Option),
+				out: &Option{
+					Name: FullIdentifier{[]scanner.Token{make(token.Identifier, "java_package")}},
+					Value: Constant{SignedNumber{
+						Sign:   make(token.Minus, ""),
+						Number: make(token.FloatLiteral, "10.5"),
+					}},
+				},
+			},
+			{name: "bad syntax", in: `option java_package = syntax;`, target: new(Option),
+				err: errors.New(`expected a valid constant value, but got syntax`),
 			},
 		},
-		{name: "simple message", in: `message Foo {
-			repeated int32 ids = 1;
-		}`,
-			out: &Message{
-				Name: make(token.Identifier, "Foo"),
-				Def: MessageDef{
-					&Field{
-						Repeated: true,
-						Type:     make(token.Int32, ""),
-						Name:     make(token.Identifier, "ids"),
-						Number:   make(token.DecimalLiteral, "1"),
-						Options:  nil,
-					},
+
+		"Message": {
+			{name: "empty message", in: `message Foo {}`, target: new(Message),
+				out: &Message{
+					Name: make(token.Identifier, "Foo"),
+				},
+			},
+			{name: "simple message", target: new(Message),
+				in: `message Foo {
+					repeated int32 ids = 1;
+				}`,
+				out: &Message{
+					Name: make(token.Identifier, "Foo"),
+					Def: MessageDef{[]interface{}{
+						&Field{
+							Repeated: true,
+							Type:     make(token.Int32, ""),
+							Name:     make(token.Identifier, "ids"),
+							Number:   make(token.DecimalLiteral, "1"),
+						},
+					}},
+				},
+			},
+			{name: "message with two fields", target: new(Message),
+				in: `message Foo {
+					bool foo = 1;
+					repeated int64 ids = 2;
+				}`,
+				out: &Message{
+					Name: make(token.Identifier, "Foo"),
+					Def: MessageDef{[]interface{}{
+						&Field{
+							Type:   make(token.Bool, ""),
+							Name:   make(token.Identifier, "foo"),
+							Number: make(token.DecimalLiteral, "1"),
+						},
+						&Field{
+							Repeated: true,
+							Type:     make(token.Int64, ""),
+							Name:     make(token.Identifier, "ids"),
+							Number:   make(token.DecimalLiteral, "2"),
+						},
+					}},
 				},
 			},
 		},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			p := &parser{s: scanner.New(strings.NewReader(tt.in))}
-			var msg Message
-			err := msg.parse(p)
-			if !checkErrors(t, tt.err, err) {
-				return
-			}
-			if msg.Name != tt.out.Name {
-				t.Fatalf("expected message name %v; got %v", tt.out.Name, msg.Name)
-			}
-			if !reflect.DeepEqual(msg.Def, tt.out.Def) {
-				t.Fatalf("expected message definition %v; got %v", tt.out.Def, msg.Def)
+
+	for theme, tests := range tests {
+		t.Run(theme, func(t *testing.T) {
+			for _, tt := range tests {
+				t.Run(tt.name, func(t *testing.T) {
+					p := &parser{s: scanner.New(strings.NewReader(tt.in))}
+					err := tt.target.parse(p)
+					if !checkErrors(t, tt.err, err) {
+						return
+					}
+					if !reflect.DeepEqual(tt.target, tt.out) {
+						a, b := print(tt.out), print(tt.target)
+						diff, err := difflib.GetUnifiedDiffString(difflib.UnifiedDiff{
+							A:       difflib.SplitLines(a),
+							B:       difflib.SplitLines(a),
+							Context: 3,
+						})
+						if err != nil {
+							t.Fatalf("could not diff: %v", err)
+						}
+						t.Fatalf("\nexpected:\n\t%v\ngot:\n\t%v\ndiff:\n\t%v", a, b, diff)
+					}
+				})
 			}
 		})
 	}
+}
+
+func print(v interface{}) string {
+	b, err := json.MarshalIndent(v, "", "\t")
+	if err != nil {
+		panic(err)
+	}
+	return string(b)
 }

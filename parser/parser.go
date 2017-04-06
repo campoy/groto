@@ -27,11 +27,13 @@ func Parse(r io.Reader) (*Proto, error) {
 	return &proto, nil
 }
 
+type parsable interface {
+	parse(*parser) error
+}
+
 func (proto *Proto) parse(p *parser) error {
 	for {
-		var target interface {
-			parse(*parser) error
-		}
+		var target parsable
 		switch next := p.peek(); next.Kind {
 		case token.Illegal:
 			return fmt.Errorf("unexpected %s", next.Text)
@@ -221,7 +223,7 @@ func (msg *Message) parse(p *parser) error {
 
 type MessageDef struct {
 	// can be Field, Enum, Message, Option, Oneof, Mapfield, Reserved, or nil
-	Definition interface{}
+	Definitions []interface{}
 }
 
 func (def *MessageDef) parse(p *parser) error {
@@ -229,39 +231,40 @@ func (def *MessageDef) parse(p *parser) error {
 		return fmt.Errorf("expected '{' to start message definition, got %s", tok)
 	}
 
-	var target interface {
-		parse(*parser) error
-	}
-	switch p.peek().Kind {
-	case token.Enum:
-		// target = new(Enum)
-	case token.Message:
-		target = new(Message)
-	case token.Option:
-		target = new(Option)
-	case token.Oneof:
-	// target = new(Oneof)
-	case token.Map:
-	// target = new(MapField)
-	case token.Reserved:
-	// target = new(Reserved)
-	case token.Semicolon:
-	case token.Identifier, token.Repeated:
-		target = new(Field)
-	}
-	if target != nil {
-		if err := target.parse(p); err != nil {
-			return err
+	for {
+		var target parsable
+		switch next := p.peek(); next.Kind {
+		case token.CloseBraces:
+			p.scan()
+			return nil
+		case token.Enum:
+			// target = new(Enum)
+		case token.Message:
+			target = new(Message)
+		case token.Option:
+			target = new(Option)
+		case token.Oneof:
+		// target = new(Oneof)
+		case token.Map:
+		// target = new(MapField)
+		case token.Reserved:
+		// target = new(Reserved)
+		case token.Semicolon:
+		case token.Identifier, token.Repeated:
+			target = new(Field)
+		default:
+			if !token.IsType(next.Kind) {
+				return fmt.Errorf("expected '}' to end message definition, got %s", next)
+			}
+			target = new(Field)
+		}
+		if target != nil {
+			if err := target.parse(p); err != nil {
+				return err
+			}
+			def.Definitions = append(def.Definitions, target)
 		}
 	}
-
-	def.Definition = target
-
-	if tok, ok := p.consume(token.CloseBraces); !ok {
-		return fmt.Errorf("expected '}' to end message definition, got %s", tok)
-	}
-
-	return nil
 }
 
 type Field struct {
