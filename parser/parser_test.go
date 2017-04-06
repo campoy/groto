@@ -272,6 +272,28 @@ func TestParse(t *testing.T) {
 					},
 				},
 			},
+			{name: "a message inside of a message", target: new(Message),
+				in: `message Foo {
+					message Bar {
+					  int32 id = 1;
+					}
+				}`,
+				out: &Message{
+					Name: make(token.Identifier, "Foo"),
+					Def: MessageDef{
+						&Message{
+							Name: make(token.Identifier, "Bar"),
+							Def: MessageDef{
+								&Field{
+									Type:   make(token.Int32, ""),
+									Name:   make(token.Identifier, "id"),
+									Number: make(token.DecimalLiteral, "1"),
+								},
+							},
+						},
+					},
+				},
+			},
 		},
 	}
 
