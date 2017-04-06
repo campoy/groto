@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/campoy/groto/scanner"
 	"github.com/campoy/groto/token"
 )
@@ -13,6 +14,7 @@ type Proto struct {
 	Imports  Imports
 	Packages Packages
 	Options  Options
+	Messages Messages
 }
 
 func Parse(r io.Reader) (*Proto, error) {
@@ -46,6 +48,8 @@ func (proto *Proto) parse(p *parser) error {
 			target = &proto.Packages
 		case token.Option:
 			target = &proto.Options
+		case token.Message:
+			target = &proto.Messages
 		default:
 			return fmt.Errorf("unexpected %v (%s) at top level definition", next.Kind, next.Text)
 		}
@@ -187,6 +191,139 @@ func (opt *Option) parse(p *parser) error {
 	return nil
 }
 
+type Messages []Message
+
+func (msgs *Messages) parse(p *parser) error {
+	var msg Message
+	if err := msg.parse(p); err != nil {
+		return err
+	}
+	*msgs = append(*msgs, msg)
+	return nil
+}
+
+type Message struct {
+	Name scanner.Token
+	Def  MessageDef
+}
+
+func (msg *Message) parse(p *parser) error {
+	if tok, ok := p.consume(token.Message); !ok {
+		return fmt.Errorf("expected keyword message, got %s", tok)
+	}
+	name := p.scan()
+	if name.Kind != token.Identifier {
+		return fmt.Errorf("expected message identifier, got %s", name)
+	}
+	msg.Name = name
+	return msg.Def.parse(p)
+}
+
+type MessageDef struct {
+	// can be Field, Enum, Message, Option, Oneof, Mapfield, Reserved, or nil
+	Definition interface{}
+}
+
+func (def *MessageDef) parse(p *parser) error {
+	if tok, ok := p.consume(token.OpenBraces); !ok {
+		return fmt.Errorf("expected '{' to start message definition, got %s", tok)
+	}
+
+	var target interface {
+		parse(*parser) error
+	}
+	switch p.peek().Kind {
+	case token.Enum:
+		// target = new(Enum)
+	case token.Message:
+		target = new(Message)
+	case token.Option:
+		target = new(Option)
+	case token.Oneof:
+	// target = new(Oneof)
+	case token.Map:
+	// target = new(MapField)
+	case token.Reserved:
+	// target = new(Reserved)
+	case token.Semicolon:
+	case token.Identifier, token.Repeated:
+		target = new(Field)
+	}
+	if target != nil {
+		if err := target.parse(p); err != nil {
+			return err
+		}
+	}
+
+	def.Definition = target
+
+	if tok, ok := p.consume(token.CloseBraces); !ok {
+		return fmt.Errorf("expected '}' to end message definition, got %s", tok)
+	}
+
+	return nil
+}
+
+type Field struct {
+	Repeated bool
+	Type     scanner.Token
+	Name     scanner.Token
+	Number   scanner.Token
+	Options  FieldOptions
+}
+
+func (f *Field) parse(p *parser) error {
+	next := p.scan()
+	if next.Kind == token.Repeated {
+		f.Repeated = true
+		next = p.scan()
+	}
+	if next.Kind != token.Identifier && !token.IsType(next.Kind) {
+		return fmt.Errorf("expected field type, got %s", next)
+	}
+	f.Type = next
+	next = p.scan()
+	if next.Kind != token.Identifier {
+		return fmt.Errorf("expected field name, got %s", next)
+	}
+	f.Name = next
+
+	if tok, ok := p.consume(token.Equals); !ok {
+		return fmt.Errorf("expected '=' after field name, got %s", tok)
+	}
+
+	number := p.scan()
+	if number.Kind != token.DecimalLiteral {
+		return fmt.Errorf("expected field number, got %s", number)
+	}
+	f.Number = number
+
+	next = p.scan()
+	if next.Kind == token.OpenBrackets {
+		if err := f.Options.parse(p); err != nil {
+			return nil
+		}
+		if tok, ok := p.consume(token.CloseBracket); !ok {
+			return fmt.Errorf("expected '}' to close field options, got %s", tok)
+		}
+		next = p.scan()
+	}
+	if next.Kind != token.Semicolon {
+		return fmt.Errorf("missing semicolon at the end of field definition")
+	}
+	return nil
+}
+
+type FieldOptions []FieldOption
+
+func (ops *FieldOptions) parse(p *parser) error {
+	return nil
+}
+
+type FieldOption struct {
+	// TODO
+}
+
 // Parsing functions to make the code above much nicer.
 // Not proud of this, but what's a gopher to do?
 
@@ -251,7 +388,8 @@ type parser struct {
 	peeked *scanner.Token
 }
 
-func (p *parser) scan() scanner.Token {
+func (p *parser) scan() (res scanner.Token) {
+	defer func() { logrus.Infof("scan: %s", res) }()
 	if tok := p.peeked; tok != nil {
 		p.peeked = nil
 		return *tok
@@ -260,7 +398,8 @@ func (p *parser) scan() scanner.Token {
 	return tok
 }
 
-func (p *parser) peek() scanner.Token {
+func (p *parser) peek() (res scanner.Token) {
+	defer func() { logrus.Infof("peek: %s", res) }()
 	if tok := p.peeked; tok != nil {
 		return *tok
 	}

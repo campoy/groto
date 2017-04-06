@@ -205,3 +205,50 @@ func TestParseOption(t *testing.T) {
 		})
 	}
 }
+
+func TestParseMessages(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		out  *Message
+		err  error
+	}{
+		{name: "empty message", in: `message Foo {}`,
+			out: &Message{
+				Name: make(token.Identifier, "Foo"),
+			},
+		},
+		{name: "simple message", in: `message Foo {
+			repeated int32 ids = 1;
+		}`,
+			out: &Message{
+				Name: make(token.Identifier, "Foo"),
+				Def: MessageDef{
+					&Field{
+						Repeated: true,
+						Type:     make(token.Int32, ""),
+						Name:     make(token.Identifier, "ids"),
+						Number:   make(token.DecimalLiteral, "1"),
+						Options:  nil,
+					},
+				},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := &parser{s: scanner.New(strings.NewReader(tt.in))}
+			var msg Message
+			err := msg.parse(p)
+			if !checkErrors(t, tt.err, err) {
+				return
+			}
+			if msg.Name != tt.out.Name {
+				t.Fatalf("expected message name %v; got %v", tt.out.Name, msg.Name)
+			}
+			if !reflect.DeepEqual(msg.Def, tt.out.Def) {
+				t.Fatalf("expected message definition %v; got %v", tt.out.Def, msg.Def)
+			}
+		})
+	}
+}
