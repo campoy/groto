@@ -4,10 +4,11 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/campoy/groto/scanner"
 	"github.com/campoy/groto/token"
 )
+
+var logf = func(format string, args ...interface{}) {}
 
 type Proto struct {
 	Syntax   Syntax
@@ -18,7 +19,7 @@ type Proto struct {
 }
 
 func Parse(r io.Reader) (*Proto, error) {
-	p := &parser{s: scanner.New(r)}
+	p := &peeker{s: scanner.New(r)}
 
 	var proto Proto
 	if err := proto.parse(p); err != nil {
@@ -27,13 +28,16 @@ func Parse(r io.Reader) (*Proto, error) {
 	return &proto, nil
 }
 
-type parsable interface {
-	parse(*parser) error
+type parser interface {
+	parse(*peeker) error
 }
 
-func (proto *Proto) parse(p *parser) error {
+func (proto *Proto) parse(p *peeker) error {
+	logf("> proto.parse")
+	defer logf("< proto.parse")
+
 	for {
-		var target parsable
+		var target parser
 		switch next := p.peek(); next.Kind {
 		case token.Illegal:
 			return fmt.Errorf("unexpected %s", next.Text)
@@ -63,7 +67,10 @@ func (proto *Proto) parse(p *parser) error {
 
 type Syntax struct{ Value scanner.Token }
 
-func (s *Syntax) parse(p *parser) error {
+func (s *Syntax) parse(p *peeker) error {
+	logf("> syntax.parse")
+	defer logf("< syntax.parse")
+
 	if tok, ok := p.consume(token.Syntax, token.Equals); !ok {
 		return fmt.Errorf("expected '=', got %s instead", tok.Text)
 	}
@@ -83,7 +90,10 @@ func (s *Syntax) parse(p *parser) error {
 
 type Imports []Import
 
-func (imps *Imports) parse(p *parser) error {
+func (imps *Imports) parse(p *peeker) error {
+	logf("> imports.parse")
+	defer logf("< imports.parse")
+
 	var imp Import
 	if err := imp.parse(p); err != nil {
 		return err
@@ -97,7 +107,10 @@ type Import struct {
 	Path     scanner.Token
 }
 
-func (imp *Import) parse(p *parser) error {
+func (imp *Import) parse(p *peeker) error {
+	logf("> import.parse")
+	defer logf("< import.parse")
+
 	if tok, ok := p.consume(token.Import); !ok {
 		return fmt.Errorf("expected 'import' keyword, but instead got %s", tok)
 	}
@@ -115,7 +128,10 @@ func (imp *Import) parse(p *parser) error {
 
 type Packages []Package
 
-func (pkgs *Packages) parse(p *parser) error {
+func (pkgs *Packages) parse(p *peeker) error {
+	logf("> packages.parse")
+	defer logf("< packages.parse")
+
 	var pkg Package
 	if err := pkg.parse(p); err != nil {
 		return err
@@ -128,7 +144,10 @@ type Package struct {
 	Identifier FullIdentifier
 }
 
-func (pkg *Package) parse(p *parser) error {
+func (pkg *Package) parse(p *peeker) error {
+	logf("> package.parse")
+	defer logf("< package.parse")
+
 	if tok, ok := p.consume(token.Package); !ok {
 		return fmt.Errorf("expected keyword package, got %s", tok)
 	}
@@ -143,11 +162,23 @@ func (pkg *Package) parse(p *parser) error {
 
 type Options []Option
 
-func (opts *Options) parse(p *parser) error {
+func (opts *Options) parse(p *peeker) error {
+	logf("> options.parse")
+	defer logf("< options.parse")
+
 	var opt Option
+	if tok, ok := p.consume(token.Option); !ok {
+		return fmt.Errorf("expected keyword option, got %s", tok)
+	}
+
 	if err := opt.parse(p); err != nil {
 		return err
 	}
+
+	if tok, ok := p.consume(token.Semicolon); !ok {
+		return fmt.Errorf("missing semicolon at the end of option statement, got %s", tok)
+	}
+
 	*opts = append(*opts, opt)
 	return nil
 }
@@ -158,10 +189,9 @@ type Option struct {
 	Value  Constant
 }
 
-func (opt *Option) parse(p *parser) error {
-	if tok, ok := p.consume(token.Option); !ok {
-		return fmt.Errorf("expected keyword option, got %s", tok)
-	}
+func (opt *Option) parse(p *peeker) error {
+	logf("> option.parse")
+	defer logf("< option.parse")
 
 	next := p.peek()
 	if next.Kind == token.OpenParens {
@@ -187,15 +217,15 @@ func (opt *Option) parse(p *parser) error {
 	if err := opt.Value.parse(p); err != nil {
 		return err
 	}
-	if tok, ok := p.consume(token.Semicolon); !ok {
-		return fmt.Errorf("missing semicolon at the end of option statement, got %s", tok)
-	}
 	return nil
 }
 
 type Messages []Message
 
-func (msgs *Messages) parse(p *parser) error {
+func (msgs *Messages) parse(p *peeker) error {
+	logf("> messages.parse")
+	defer logf("< messages.parse")
+
 	var msg Message
 	if err := msg.parse(p); err != nil {
 		return err
@@ -209,7 +239,10 @@ type Message struct {
 	Def  MessageDef
 }
 
-func (msg *Message) parse(p *parser) error {
+func (msg *Message) parse(p *peeker) error {
+	logf("> message.parse")
+	defer logf("< message.parse")
+
 	if tok, ok := p.consume(token.Message); !ok {
 		return fmt.Errorf("expected keyword message, got %s", tok)
 	}
@@ -226,13 +259,16 @@ type MessageDef struct {
 	Definitions []interface{}
 }
 
-func (def *MessageDef) parse(p *parser) error {
+func (def *MessageDef) parse(p *peeker) error {
+	logf("> messagedef.parse")
+	defer logf("< messagedef.parse")
+
 	if tok, ok := p.consume(token.OpenBraces); !ok {
 		return fmt.Errorf("expected '{' to start message definition, got %s", tok)
 	}
 
 	for {
-		var target parsable
+		var target parser
 		switch next := p.peek(); next.Kind {
 		case token.CloseBraces:
 			p.scan()
@@ -275,7 +311,10 @@ type Field struct {
 	Options  FieldOptions
 }
 
-func (f *Field) parse(p *parser) error {
+func (f *Field) parse(p *peeker) error {
+	logf("> field.parse")
+	defer logf("< field.parse")
+
 	next := p.scan()
 	if next.Kind == token.Repeated {
 		f.Repeated = true
@@ -303,11 +342,16 @@ func (f *Field) parse(p *parser) error {
 
 	next = p.scan()
 	if next.Kind == token.OpenBrackets {
-		if err := f.Options.parse(p); err != nil {
-			return nil
+		for {
+			if err := f.Options.parse(p); err != nil {
+				return nil
+			}
+			if p.peek().Kind != token.Comma {
+				break
+			}
 		}
 		if tok, ok := p.consume(token.CloseBracket); !ok {
-			return fmt.Errorf("expected '}' to close field options, got %s", tok)
+			return fmt.Errorf("expected ']' to close field options, got %s", tok)
 		}
 		next = p.scan()
 	}
@@ -317,14 +361,20 @@ func (f *Field) parse(p *parser) error {
 	return nil
 }
 
-type FieldOptions []FieldOption
+type FieldOptions []Option
 
-func (ops *FieldOptions) parse(p *parser) error {
-	return nil
-}
-
-type FieldOption struct {
-	// TODO
+func (opts *FieldOptions) parse(p *peeker) error {
+	for {
+		var opt Option
+		if err := opt.parse(p); err != nil {
+			return err
+		}
+		*opts = append(*opts, opt)
+		if p.peek().Kind != token.Comma {
+			return nil
+		}
+		p.scan()
+	}
 }
 
 // Parsing functions to make the code above much nicer.
@@ -334,7 +384,10 @@ type FullIdentifier struct {
 	Identifiers []scanner.Token
 }
 
-func (ident *FullIdentifier) parse(p *parser) error {
+func (ident *FullIdentifier) parse(p *peeker) error {
+	logf("> fullidentifier.parse")
+	defer logf("< fullidentifier.parse")
+
 	next := p.scan()
 	if next.Kind != token.Identifier {
 		return fmt.Errorf("expected identifier, got %s", next)
@@ -363,7 +416,10 @@ type SignedNumber struct {
 	Sign, Number scanner.Token
 }
 
-func (c *Constant) parse(p *parser) error {
+func (c *Constant) parse(p *peeker) error {
+	logf("> constant.parse")
+	defer logf("< constant.parse")
+
 	switch next := p.peek(); {
 	case token.IsConstant(next.Kind):
 		c.Value = p.scan()
@@ -386,13 +442,13 @@ func (c *Constant) parse(p *parser) error {
 	return nil
 }
 
-type parser struct {
+type peeker struct {
 	s      *scanner.Scanner
 	peeked *scanner.Token
 }
 
-func (p *parser) scan() (res scanner.Token) {
-	defer func() { logrus.Infof("scan: %s", res) }()
+func (p *peeker) scan() (res scanner.Token) {
+	defer func() { logf("scan: %s", res) }()
 	if tok := p.peeked; tok != nil {
 		p.peeked = nil
 		return *tok
@@ -401,8 +457,8 @@ func (p *parser) scan() (res scanner.Token) {
 	return tok
 }
 
-func (p *parser) peek() (res scanner.Token) {
-	defer func() { logrus.Infof("peek: %s", res) }()
+func (p *peeker) peek() (res scanner.Token) {
+	defer func() { logf("peek: %s", res) }()
 	if tok := p.peeked; tok != nil {
 		return *tok
 	}
@@ -411,7 +467,7 @@ func (p *parser) peek() (res scanner.Token) {
 	return tok
 }
 
-func (p *parser) consume(tokens ...token.Kind) (*scanner.Token, bool) {
+func (p *peeker) consume(tokens ...token.Kind) (*scanner.Token, bool) {
 	for _, tok := range tokens {
 		got := p.scan()
 		if got.Kind != tok {

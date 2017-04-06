@@ -8,6 +8,7 @@ import (
 
 	"reflect"
 
+	"github.com/Sirupsen/logrus"
 	"github.com/campoy/groto/scanner"
 	"github.com/campoy/groto/token"
 	"github.com/pmezard/go-difflib/difflib"
@@ -34,11 +35,13 @@ func checkErrors(t *testing.T, want, got error) bool {
 }
 
 func TestParse(t *testing.T) {
+	logf = logrus.Infof
+
 	tests := map[string][]struct {
 		name   string
 		in     string
-		target parsable
-		out    parsable
+		target parser
+		out    parser
 		err    error
 	}{
 		"Syntax": {
@@ -99,40 +102,40 @@ func TestParse(t *testing.T) {
 		},
 
 		"Option": {
-			{name: "good syntax string", in: `option java_package = "com.example.foo";`, target: new(Option),
-				out: &Option{
+			{name: "good syntax string", in: `option java_package = "com.example.foo";`, target: new(Options),
+				out: &Options{{
 					Name:  FullIdentifier{[]scanner.Token{make(token.Identifier, "java_package")}},
 					Value: Constant{make(token.StringLiteral, `"com.example.foo"`)},
-				},
+				}},
 			},
-			{name: "good syntax full identifer", in: `option java_package = foo.bar;`, target: new(Option),
-				out: &Option{
+			{name: "good syntax full identifer", in: `option java_package = foo.bar;`, target: new(Options),
+				out: &Options{{
 					Name: FullIdentifier{[]scanner.Token{make(token.Identifier, "java_package")}},
 					Value: Constant{FullIdentifier{[]scanner.Token{
 						make(token.Identifier, "foo"),
 						make(token.Identifier, "bar"),
 					}}},
-				},
+				}},
 			},
-			{name: "good syntax integer", in: `option options.number = 42;`, target: new(Option),
-				out: &Option{
+			{name: "good syntax integer", in: `option options.number = 42;`, target: new(Options),
+				out: &Options{{
 					Name: FullIdentifier{[]scanner.Token{
 						make(token.Identifier, "options"),
 						make(token.Identifier, "number"),
 					}},
 					Value: Constant{make(token.DecimalLiteral, "42")},
-				},
+				}},
 			},
-			{name: "good syntax signed float", in: `option java_package = -10.5;`, target: new(Option),
-				out: &Option{
+			{name: "good syntax signed float", in: `option java_package = -10.5;`, target: new(Options),
+				out: &Options{{
 					Name: FullIdentifier{[]scanner.Token{make(token.Identifier, "java_package")}},
 					Value: Constant{SignedNumber{
 						Sign:   make(token.Minus, ""),
 						Number: make(token.FloatLiteral, "10.5"),
 					}},
-				},
+				}},
 			},
-			{name: "bad syntax", in: `option java_package = syntax;`, target: new(Option),
+			{name: "bad syntax", in: `option java_package = syntax;`, target: new(Options),
 				err: errors.New(`expected a valid constant value, but got syntax`),
 			},
 		},
@@ -181,6 +184,51 @@ func TestParse(t *testing.T) {
 					}},
 				},
 			},
+			{name: "simple message with one option", target: new(Message),
+				in: `message Foo {
+					repeated int32 ids = 1 [packed=true];
+				}`,
+				out: &Message{
+					Name: make(token.Identifier, "Foo"),
+					Def: MessageDef{[]interface{}{
+						&Field{
+							Repeated: true,
+							Type:     make(token.Int32, ""),
+							Name:     make(token.Identifier, "ids"),
+							Number:   make(token.DecimalLiteral, "1"),
+							Options: FieldOptions{{
+								Name:  FullIdentifier{[]scanner.Token{make(token.Identifier, "packed")}},
+								Value: Constant{make(token.True, "")},
+							},
+							},
+						},
+					}},
+				},
+			},
+			{name: "simple message with two options", target: new(Message),
+				in: `message Foo {
+					repeated int32 ids = 1 [packed=true,json="-"];
+				}`,
+				out: &Message{
+					Name: make(token.Identifier, "Foo"),
+					Def: MessageDef{[]interface{}{
+						&Field{
+							Repeated: true,
+							Type:     make(token.Int32, ""),
+							Name:     make(token.Identifier, "ids"),
+							Number:   make(token.DecimalLiteral, "1"),
+							Options: FieldOptions{{
+								Name:  FullIdentifier{[]scanner.Token{make(token.Identifier, "packed")}},
+								Value: Constant{make(token.True, "")},
+							}, {
+								Name:  FullIdentifier{[]scanner.Token{make(token.Identifier, "json")}},
+								Value: Constant{make(token.StringLiteral, `"-"`)},
+							},
+							},
+						},
+					}},
+				},
+			},
 		},
 	}
 
@@ -188,8 +236,8 @@ func TestParse(t *testing.T) {
 		t.Run(theme, func(t *testing.T) {
 			for _, tt := range tests {
 				t.Run(tt.name, func(t *testing.T) {
-					p := &parser{s: scanner.New(strings.NewReader(tt.in))}
-					err := tt.target.parse(p)
+					s := &peeker{s: scanner.New(strings.NewReader(tt.in))}
+					err := tt.target.parse(s)
 					if !checkErrors(t, tt.err, err) {
 						return
 					}
