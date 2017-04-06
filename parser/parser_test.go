@@ -3,6 +3,7 @@ package parser
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"strings"
 	"testing"
 
@@ -104,13 +105,13 @@ func TestParse(t *testing.T) {
 		"Option": {
 			{name: "good syntax string", in: `option java_package = "com.example.foo";`, target: new(Options),
 				out: &Options{{
-					Name:  FullIdentifier{[]scanner.Token{make(token.Identifier, "java_package")}},
+					Name:  &FullIdentifier{[]scanner.Token{make(token.Identifier, "java_package")}},
 					Value: Constant{make(token.StringLiteral, `"com.example.foo"`)},
 				}},
 			},
 			{name: "good syntax full identifer", in: `option java_package = foo.bar;`, target: new(Options),
 				out: &Options{{
-					Name: FullIdentifier{[]scanner.Token{make(token.Identifier, "java_package")}},
+					Name: &FullIdentifier{[]scanner.Token{make(token.Identifier, "java_package")}},
 					Value: Constant{FullIdentifier{[]scanner.Token{
 						make(token.Identifier, "foo"),
 						make(token.Identifier, "bar"),
@@ -119,7 +120,7 @@ func TestParse(t *testing.T) {
 			},
 			{name: "good syntax integer", in: `option options.number = 42;`, target: new(Options),
 				out: &Options{{
-					Name: FullIdentifier{[]scanner.Token{
+					Name: &FullIdentifier{[]scanner.Token{
 						make(token.Identifier, "options"),
 						make(token.Identifier, "number"),
 					}},
@@ -128,7 +129,7 @@ func TestParse(t *testing.T) {
 			},
 			{name: "good syntax signed float", in: `option java_package = -10.5;`, target: new(Options),
 				out: &Options{{
-					Name: FullIdentifier{[]scanner.Token{make(token.Identifier, "java_package")}},
+					Name: &FullIdentifier{[]scanner.Token{make(token.Identifier, "java_package")}},
 					Value: Constant{SignedNumber{
 						Sign:   make(token.Minus, ""),
 						Number: make(token.FloatLiteral, "10.5"),
@@ -197,7 +198,7 @@ func TestParse(t *testing.T) {
 							Name:     make(token.Identifier, "ids"),
 							Number:   make(token.DecimalLiteral, "1"),
 							Options: FieldOptions{{
-								Name:  FullIdentifier{[]scanner.Token{make(token.Identifier, "packed")}},
+								Name:  &FullIdentifier{[]scanner.Token{make(token.Identifier, "packed")}},
 								Value: Constant{make(token.True, "")},
 							}},
 						},
@@ -217,12 +218,56 @@ func TestParse(t *testing.T) {
 							Name:     make(token.Identifier, "ids"),
 							Number:   make(token.DecimalLiteral, "1"),
 							Options: FieldOptions{{
-								Name:  FullIdentifier{[]scanner.Token{make(token.Identifier, "packed")}},
+								Name:  &FullIdentifier{[]scanner.Token{make(token.Identifier, "packed")}},
 								Value: Constant{make(token.True, "")},
 							}, {
-								Name:  FullIdentifier{[]scanner.Token{make(token.Identifier, "json")}},
+								Name:  &FullIdentifier{[]scanner.Token{make(token.Identifier, "json")}},
 								Value: Constant{make(token.StringLiteral, `"-"`)},
 							}},
+						},
+					},
+				},
+			},
+			{name: "simple message with an enum", target: new(Message),
+				in: `message Foo {
+					enum EnumAllowingAlias {
+						option allow_alias = true;
+						UNKNOWN = 0;
+						STARTED = 1;
+						RUNNING = 2 [(custom_option) = "hello world"];
+					}
+				}`,
+				out: &Message{
+					Name: make(token.Identifier, "Foo"),
+					Def: MessageDef{
+						&Enum{
+							Name: make(token.Identifier, "EnumAllowingAlias"),
+							Def: EnumDef{
+								Options: Options{
+									{
+										Name:  &FullIdentifier{[]scanner.Token{make(token.Identifier, "allow_alias")}},
+										Value: Constant{make(token.True, "")},
+									},
+								},
+								Fields: EnumFields{
+									{
+										Name:   make(token.Identifier, "UNKNOWN"),
+										Number: make(token.DecimalLiteral, "0"),
+									},
+									{
+										Name:   make(token.Identifier, "STARTED"),
+										Number: make(token.DecimalLiteral, "1"),
+									},
+									{
+										Name:   make(token.Identifier, "RUNNING"),
+										Number: make(token.DecimalLiteral, "2"),
+										Options: FieldOptions{{
+											Prefix: &FullIdentifier{[]scanner.Token{make(token.Identifier, "custom_option")}},
+											Value:  Constant{make(token.StringLiteral, `"hello world"`)},
+										}},
+									},
+								},
+							},
 						},
 					},
 				},
@@ -234,6 +279,7 @@ func TestParse(t *testing.T) {
 		t.Run(theme, func(t *testing.T) {
 			for _, tt := range tests {
 				t.Run(tt.name, func(t *testing.T) {
+					log.Printf("\n\n[[[[%s]]]]\n\n", t.Name())
 					s := &peeker{s: scanner.New(strings.NewReader(tt.in))}
 					err := tt.target.parse(s)
 					if !checkErrors(t, tt.err, err) {

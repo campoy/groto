@@ -185,7 +185,7 @@ func (opts *Options) parse(p *peeker) error {
 
 type Option struct {
 	Prefix *FullIdentifier
-	Name   FullIdentifier
+	Name   *FullIdentifier
 	Value  Constant
 }
 
@@ -196,6 +196,7 @@ func (opt *Option) parse(p *peeker) error {
 	next := p.peek()
 	if next.Kind == token.OpenParens {
 		p.scan()
+		opt.Prefix = new(FullIdentifier)
 		if err := opt.Prefix.parse(p); err != nil {
 			return err
 		}
@@ -204,15 +205,21 @@ func (opt *Option) parse(p *peeker) error {
 		}
 		next = p.scan()
 	}
-	if next.Kind != token.Identifier {
-		return fmt.Errorf("expected identifer in option name, got %v %s", next.Kind, next.Text)
-	}
-	if err := opt.Name.parse(p); err != nil {
-		return err
+
+	if next.Kind == token.Identifier {
+		opt.Name = new(FullIdentifier)
+		if err := opt.Name.parse(p); err != nil {
+			return err
+		}
+		next = p.scan()
 	}
 
-	if tok, ok := p.consume(token.Equals); !ok {
-		return fmt.Errorf("expected '=' between option name and value, got %s", tok)
+	if opt.Prefix == nil && opt.Name == nil {
+		return fmt.Errorf("missing name in option")
+	}
+
+	if next.Kind != token.Equals {
+		return fmt.Errorf("expected '=' between option name and value, got %s", next)
 	}
 	if err := opt.Value.parse(p); err != nil {
 		return err
@@ -272,7 +279,7 @@ func (def *MessageDef) parse(p *peeker) error {
 			p.scan()
 			return nil
 		case token.Enum:
-			// target = new(Enum)
+			target = new(Enum)
 		case token.Message:
 			target = new(Message)
 		case token.Option:
@@ -379,8 +386,104 @@ type Enum struct {
 	Def  EnumDef
 }
 
+func (enum *Enum) parse(p *peeker) error {
+	if tok, ok := p.consume(token.Enum); !ok {
+		return fmt.Errorf("expected keyword enum, got %s", tok)
+	}
+
+	enum.Name = p.scan()
+	if enum.Name.Kind != token.Identifier {
+		return fmt.Errorf("expected enum name, got %s", enum.Name)
+	}
+
+	return enum.Def.parse(p)
+}
+
 type EnumDef struct {
-	Defs []interface{}
+	Fields  EnumFields
+	Options Options
+}
+
+func (def *EnumDef) parse(p *peeker) error {
+	logf("> enumdef.parse")
+	defer logf("< enumdef.parse")
+
+	if tok, ok := p.consume(token.OpenBraces); !ok {
+		return fmt.Errorf("expected '{' to start message definition, got %s", tok)
+	}
+
+	for {
+		var target parser
+		switch next := p.peek(); next.Kind {
+		case token.CloseBraces:
+			p.scan()
+			return nil
+		case token.Option:
+			target = &def.Options
+		case token.Identifier, token.Repeated:
+			target = &def.Fields
+		default:
+			if !token.IsType(next.Kind) {
+				return fmt.Errorf("expected '}' to end message definition, got %s", next)
+			}
+			target = &def.Fields
+		}
+		if target != nil {
+			if err := target.parse(p); err != nil {
+				return err
+			}
+		}
+	}
+}
+
+type EnumFields []EnumField
+
+func (fs *EnumFields) parse(p *peeker) error {
+	logf("> enumfields.parse")
+	defer logf("< enumfields.parse")
+
+	var f EnumField
+	if err := f.parse(p); err != nil {
+		return err
+	}
+	*fs = append(*fs, f)
+	return nil
+}
+
+type EnumField struct {
+	Name    scanner.Token
+	Number  scanner.Token
+	Options FieldOptions
+}
+
+func (f *EnumField) parse(p *peeker) error {
+	logf("> enumfield.parse")
+	defer logf("< enumfield.parse")
+
+	next := p.scan()
+	if next.Kind != token.Identifier {
+		return fmt.Errorf("expected field name, got %s", next)
+	}
+	f.Name = next
+
+	if tok, ok := p.consume(token.Equals); !ok {
+		return fmt.Errorf("expected '=' after field name, got %s", tok)
+	}
+
+	number := p.scan()
+	if number.Kind != token.DecimalLiteral {
+		return fmt.Errorf("expected field number, got %s", number)
+	}
+	f.Number = number
+
+	if err := f.Options.parse(p); err != nil {
+		return err
+	}
+
+	if _, ok := p.consume(token.Semicolon); !ok {
+		return fmt.Errorf("missing semicolon at the end of field definition")
+	}
+	return nil
 }
 
 type FullIdentifier struct {
