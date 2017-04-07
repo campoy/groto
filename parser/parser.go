@@ -12,10 +12,10 @@ var logf = func(format string, args ...interface{}) {}
 
 type Proto struct {
 	Syntax   Syntax
-	Imports  Imports
-	Packages Packages
-	Options  Options
-	Messages Messages
+	Imports  []Import
+	Packages []Package
+	Options  []Option
+	Messages []Message
 }
 
 func Parse(r io.Reader) (*Proto, error) {
@@ -49,13 +49,13 @@ func (proto *Proto) parse(p *peeker) error {
 		case token.Syntax:
 			target = &proto.Syntax
 		case token.Import:
-			target = &proto.Imports
+			target = (*imports)(&proto.Imports)
 		case token.Package:
-			target = &proto.Packages
+			target = (*packages)(&proto.Packages)
 		case token.Option:
-			target = &proto.Options
+			target = (*options)(&proto.Options)
 		case token.Message:
-			target = &proto.Messages
+			target = (*messages)(&proto.Messages)
 		default:
 			return fmt.Errorf("unexpected %v (%s) at top level definition", next.Kind, next.Text)
 		}
@@ -88,9 +88,9 @@ func (s *Syntax) parse(p *peeker) error {
 	return nil
 }
 
-type Imports []Import
+type imports []Import
 
-func (imps *Imports) parse(p *peeker) error {
+func (imps *imports) parse(p *peeker) error {
 	logf("> imports.parse")
 	defer logf("< imports.parse")
 
@@ -126,9 +126,9 @@ func (imp *Import) parse(p *peeker) error {
 	return nil
 }
 
-type Packages []Package
+type packages []Package
 
-func (pkgs *Packages) parse(p *peeker) error {
+func (pkgs *packages) parse(p *peeker) error {
 	logf("> packages.parse")
 	defer logf("< packages.parse")
 
@@ -160,9 +160,9 @@ func (pkg *Package) parse(p *peeker) error {
 	return nil
 }
 
-type Options []Option
+type options []Option
 
-func (opts *Options) parse(p *peeker) error {
+func (opts *options) parse(p *peeker) error {
 	logf("> options.parse")
 	defer logf("< options.parse")
 
@@ -227,9 +227,9 @@ func (opt *Option) parse(p *peeker) error {
 	return nil
 }
 
-type Messages []Message
+type messages []Message
 
-func (msgs *Messages) parse(p *peeker) error {
+func (msgs *messages) parse(p *peeker) error {
 	logf("> messages.parse")
 	defer logf("< messages.parse")
 
@@ -263,11 +263,11 @@ func (msg *Message) parse(p *peeker) error {
 
 // MessageDef can be Field, Enum, Message, Option, Oneof, Mapfield, Reserved, or nil.
 type MessageDef struct {
-	Fields   Fields
-	Enums    Enums
-	Messages Messages
-	Options  Options
-	OneOfs   OneOfs
+	Fields   []Field
+	Enums    []Enum
+	Messages []Message
+	Options  []Option
+	OneOfs   []OneOf
 }
 
 func (def *MessageDef) parse(p *peeker) error {
@@ -285,25 +285,25 @@ func (def *MessageDef) parse(p *peeker) error {
 			p.scan()
 			return nil
 		case token.Enum:
-			target = &def.Enums
+			target = (*enums)(&def.Enums)
 		case token.Message:
-			target = &def.Messages
+			target = (*messages)(&def.Messages)
 		case token.Option:
-			target = &def.Options
+			target = (*options)(&def.Options)
 		case token.Oneof:
-			target = &def.OneOfs
+			target = (*oneOfs)(&def.OneOfs)
 		case token.Map:
 		// target = &def.MapFields
 		case token.Reserved:
 		// target = &def.Reserveds
 		case token.Semicolon:
 		case token.Identifier, token.Repeated:
-			target = &def.Fields
+			target = (*fields)(&def.Fields)
 		default:
 			if !token.IsType(next.Kind) {
 				return fmt.Errorf("expected '}' to end message definition, got %s", next)
 			}
-			target = &def.Fields
+			target = (*fields)(&def.Fields)
 		}
 		if target != nil {
 			if err := target.parse(p); err != nil {
@@ -313,9 +313,9 @@ func (def *MessageDef) parse(p *peeker) error {
 	}
 }
 
-type Fields []Field
+type fields []Field
 
-func (fs *Fields) parse(p *peeker) error {
+func (fs *fields) parse(p *peeker) error {
 	logf("> fields.parse")
 	defer logf("< fields.parse")
 
@@ -332,7 +332,7 @@ type Field struct {
 	Type     scanner.Token
 	Name     scanner.Token
 	Number   scanner.Token
-	Options  FieldOptions
+	Options  []Option
 }
 
 func (f *Field) parse(p *peeker) error {
@@ -364,7 +364,7 @@ func (f *Field) parse(p *peeker) error {
 	}
 	f.Number = number
 
-	if err := f.Options.parse(p); err != nil {
+	if err := (*fieldOptions)(&f.Options).parse(p); err != nil {
 		return err
 	}
 
@@ -374,9 +374,9 @@ func (f *Field) parse(p *peeker) error {
 	return nil
 }
 
-type FieldOptions []Option
+type fieldOptions []Option
 
-func (opts *FieldOptions) parse(p *peeker) error {
+func (opts *fieldOptions) parse(p *peeker) error {
 	if p.peek().Kind != token.OpenBrackets {
 		return nil
 	}
@@ -400,9 +400,9 @@ func (opts *FieldOptions) parse(p *peeker) error {
 	return nil
 }
 
-type Enums []Enum
+type enums []Enum
 
-func (enums *Enums) parse(p *peeker) error {
+func (enums *enums) parse(p *peeker) error {
 	var enum Enum
 	if err := enum.parse(p); err != nil {
 		return err
@@ -430,8 +430,8 @@ func (enum *Enum) parse(p *peeker) error {
 }
 
 type EnumDef struct {
-	Fields  EnumFields
-	Options Options
+	Fields  []EnumField
+	Options []Option
 }
 
 func (def *EnumDef) parse(p *peeker) error {
@@ -449,14 +449,14 @@ func (def *EnumDef) parse(p *peeker) error {
 			p.scan()
 			return nil
 		case token.Option:
-			target = &def.Options
+			target = (*options)(&def.Options)
 		case token.Identifier, token.Repeated:
-			target = &def.Fields
+			target = (*enumFields)(&def.Fields)
 		default:
 			if !token.IsType(next.Kind) {
 				return fmt.Errorf("expected '}' to end message definition, got %s", next)
 			}
-			target = &def.Fields
+			target = (*enumFields)(&def.Fields)
 		}
 		if target != nil {
 			if err := target.parse(p); err != nil {
@@ -466,9 +466,9 @@ func (def *EnumDef) parse(p *peeker) error {
 	}
 }
 
-type EnumFields []EnumField
+type enumFields []EnumField
 
-func (fs *EnumFields) parse(p *peeker) error {
+func (fs *enumFields) parse(p *peeker) error {
 	logf("> enumfields.parse")
 	defer logf("< enumfields.parse")
 
@@ -483,7 +483,7 @@ func (fs *EnumFields) parse(p *peeker) error {
 type EnumField struct {
 	Name    scanner.Token
 	Number  scanner.Token
-	Options FieldOptions
+	Options []Option
 }
 
 func (f *EnumField) parse(p *peeker) error {
@@ -506,7 +506,7 @@ func (f *EnumField) parse(p *peeker) error {
 	}
 	f.Number = number
 
-	if err := f.Options.parse(p); err != nil {
+	if err := (*fieldOptions)(&f.Options).parse(p); err != nil {
 		return err
 	}
 
@@ -516,9 +516,9 @@ func (f *EnumField) parse(p *peeker) error {
 	return nil
 }
 
-type OneOfs []OneOf
+type oneOfs []OneOf
 
-func (os *OneOfs) parse(p *peeker) error {
+func (os *oneOfs) parse(p *peeker) error {
 	logf("> oneofs.parse")
 	defer logf("< oneofs.parse")
 
@@ -532,7 +532,7 @@ func (os *OneOfs) parse(p *peeker) error {
 
 type OneOf struct {
 	Name   scanner.Token
-	Fields Fields
+	Fields []Field
 }
 
 func (o *OneOf) parse(p *peeker) error {
@@ -556,7 +556,7 @@ func (o *OneOf) parse(p *peeker) error {
 		if p.peek().Kind == token.CloseBraces {
 			return nil
 		}
-		if err := o.Fields.parse(p); err != nil {
+		if err := (*fields)(&o.Fields).parse(p); err != nil {
 			return err
 		}
 		if f := o.Fields[len(o.Fields)-1]; f.Repeated {

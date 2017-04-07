@@ -13,16 +13,12 @@ Ranges = Range { comma Range }
 Range = ( intLit | intLit to intLit ) 
 FieldNames = ident { comma ident }
 
-Type = ident # types are a kind of ident
-
-Constant = fullIdent | ( [ minus | plus ] intLit ) | ( [ minus | plus ] floatLit ) | strLit | boolLit 
 
 Service = service ident openBrace { Option | RPC | semicolon } closeBrace
 RPC = rpc ident RPCParam returns RPCParam ( RPCBody | semicolon )
 RPCParam = openParens [ stream ] messageType closeParens
 RPCBody = openBrace { Option | semicolon } closeBrace
 
-IntLit = decimalLit | octalLit | hexLit
 
 # Tokens
 
