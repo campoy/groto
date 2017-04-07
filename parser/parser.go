@@ -3,6 +3,7 @@ package parser
 import (
 	"fmt"
 	"io"
+	"reflect"
 
 	"github.com/campoy/groto/scanner"
 	"github.com/campoy/groto/token"
@@ -44,13 +45,13 @@ func (proto *Proto) parse(p *peeker) error {
 		case token.Syntax:
 			target = &proto.Syntax
 		case token.Import:
-			target = imports{&proto.Imports}
+			target = appender{&proto.Imports}
 		case token.Package:
-			target = packages{&proto.Packages}
+			target = appender{&proto.Packages}
 		case token.Option:
-			target = options{&proto.Options}
+			target = appender{&proto.Options}
 		case token.Message:
-			target = messages{&proto.Messages}
+			target = appender{&proto.Messages}
 		default:
 			return fmt.Errorf("unexpected %v (%s) at top level definition", next.Kind, next.Text)
 		}
@@ -233,25 +234,25 @@ func (def *MessageDef) parse(p *peeker) error {
 			p.scan()
 			return nil
 		case token.Enum:
-			target = enums{&def.Enums}
+			target = appender{&def.Enums}
 		case token.Message:
-			target = messages{&def.Messages}
+			target = appender{&def.Messages}
 		case token.Option:
-			target = options{&def.Options}
+			target = appender{&def.Options}
 		case token.Oneof:
-			target = oneOfs{&def.OneOfs}
+			target = appender{&def.OneOfs}
 		case token.Map:
 		// target = &def.MapFields
 		case token.Reserved:
 		// target = &def.Reserveds
 		case token.Semicolon:
 		case token.Identifier, token.Repeated:
-			target = fields{&def.Fields}
+			target = appender{&def.Fields}
 		default:
 			if !token.IsType(next.Kind) {
 				return fmt.Errorf("expected '}' to end message definition, got %s", next)
 			}
-			target = fields{&def.Fields}
+			target = appender{&def.Fields}
 		}
 		if target != nil {
 			if err := target.parse(p); err != nil {
@@ -340,14 +341,14 @@ func (def *EnumDef) parse(p *peeker) error {
 			p.scan()
 			return nil
 		case token.Option:
-			target = options{&def.Options}
+			target = appender{&def.Options}
 		case token.Identifier, token.Repeated:
-			target = enumFields{&def.Fields}
+			target = appender{&def.Fields}
 		default:
 			if !token.IsType(next.Kind) {
 				return fmt.Errorf("expected '}' to end message definition, got %s", next)
 			}
-			target = enumFields{&def.Fields}
+			target = appender{&def.Fields}
 		}
 		if target != nil {
 			if err := target.parse(p); err != nil {
@@ -413,7 +414,7 @@ func (o *OneOf) parse(p *peeker) error {
 		if p.peek().Kind == token.CloseBraces {
 			return nil
 		}
-		if err := (fields{&o.Fields}).parse(p); err != nil {
+		if err := (appender{&o.Fields}).parse(p); err != nil {
 			return err
 		}
 		if f := o.Fields[len(o.Fields)-1]; f.Repeated {
@@ -511,92 +512,14 @@ func (p *peeker) consume(tokens ...token.Kind) (*scanner.Token, bool) {
 	return nil, true
 }
 
-// all the slice types that do the same thing
+type appender struct{ s interface{} }
 
-type imports struct{ s *[]Import }
-
-func (imps imports) parse(p *peeker) error {
-	var imp Import
-	if err := imp.parse(p); err != nil {
+func (a appender) parse(p *peeker) error {
+	s := reflect.ValueOf(a.s).Elem()
+	v := reflect.New(s.Type().Elem())
+	if err := v.Interface().(parser).parse(p); err != nil {
 		return err
 	}
-	*imps.s = append(*imps.s, imp)
-	return nil
-}
-
-type packages struct{ s *[]Package }
-
-func (pkgs packages) parse(p *peeker) error {
-	var pkg Package
-	if err := pkg.parse(p); err != nil {
-		return err
-	}
-	*pkgs.s = append(*pkgs.s, pkg)
-	return nil
-}
-
-type messages struct{ s *[]Message }
-
-func (msgs messages) parse(p *peeker) error {
-	var msg Message
-	if err := msg.parse(p); err != nil {
-		return err
-	}
-	*msgs.s = append(*msgs.s, msg)
-	return nil
-}
-
-type fields struct{ s *[]Field }
-
-func (fs fields) parse(p *peeker) error {
-	var f Field
-	if err := f.parse(p); err != nil {
-		return err
-	}
-	*fs.s = append(*fs.s, f)
-	return nil
-}
-
-type enums struct{ s *[]Enum }
-
-func (enums enums) parse(p *peeker) error {
-	var enum Enum
-	if err := enum.parse(p); err != nil {
-		return err
-	}
-	*enums.s = append(*enums.s, enum)
-	return nil
-}
-
-type enumFields struct{ s *[]EnumField }
-
-func (fs enumFields) parse(p *peeker) error {
-	var f EnumField
-	if err := f.parse(p); err != nil {
-		return err
-	}
-	*fs.s = append(*fs.s, f)
-	return nil
-}
-
-type oneOfs struct{ s *[]OneOf }
-
-func (os oneOfs) parse(p *peeker) error {
-	var o OneOf
-	if err := o.parse(p); err != nil {
-		return err
-	}
-	*os.s = append(*os.s, o)
-	return nil
-}
-
-type options struct{ s *[]Option }
-
-func (opts options) parse(p *peeker) error {
-	var opt Option
-	if err := opt.parse(p); err != nil {
-		return err
-	}
-	*opts.s = append(*opts.s, opt)
+	s.Set(reflect.Append(s, v.Elem()))
 	return nil
 }
