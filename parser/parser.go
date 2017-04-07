@@ -263,10 +263,11 @@ func (msg *Message) parse(p *peeker) error {
 
 // MessageDef can be Field, Enum, Message, Option, Oneof, Mapfield, Reserved, or nil.
 type MessageDef struct {
+	Fields   Fields
 	Enums    Enums
 	Messages Messages
 	Options  Options
-	Fields   Fields
+	OneOfs   OneOfs
 }
 
 func (def *MessageDef) parse(p *peeker) error {
@@ -290,7 +291,7 @@ func (def *MessageDef) parse(p *peeker) error {
 		case token.Option:
 			target = &def.Options
 		case token.Oneof:
-		// target = &def.Oneofs
+			target = &def.OneOfs
 		case token.Map:
 		// target = &def.MapFields
 		case token.Reserved:
@@ -513,6 +514,55 @@ func (f *EnumField) parse(p *peeker) error {
 		return fmt.Errorf("missing semicolon at the end of field definition")
 	}
 	return nil
+}
+
+type OneOfs []OneOf
+
+func (os *OneOfs) parse(p *peeker) error {
+	logf("> oneofs.parse")
+	defer logf("< oneofs.parse")
+
+	var o OneOf
+	if err := o.parse(p); err != nil {
+		return err
+	}
+	*os = append(*os, o)
+	return nil
+}
+
+type OneOf struct {
+	Name   scanner.Token
+	Fields Fields
+}
+
+func (o *OneOf) parse(p *peeker) error {
+	logf("> oneof.parse")
+	defer logf("< oneof.parse")
+
+	if tok, ok := p.consume(token.Oneof); !ok {
+		return fmt.Errorf("expected keyword enum, got %s", tok)
+	}
+
+	o.Name = p.scan()
+	if o.Name.Kind != token.Identifier {
+		return fmt.Errorf("expected oneof name, got %s", o.Name)
+	}
+
+	if tok, ok := p.consume(token.OpenBraces); !ok {
+		return fmt.Errorf("expected '{' to begin oneoflist, got %s", tok)
+	}
+
+	for {
+		if p.peek().Kind == token.CloseBraces {
+			return nil
+		}
+		if err := o.Fields.parse(p); err != nil {
+			return err
+		}
+		if f := o.Fields[len(o.Fields)-1]; f.Repeated {
+			return fmt.Errorf("required field %s not allowed inside of oneof", f.Name.Text)
+		}
+	}
 }
 
 type FullIdentifier struct {

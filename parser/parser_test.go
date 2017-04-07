@@ -296,6 +296,31 @@ func TestParse(t *testing.T) {
 					},
 				},
 			},
+			{name: "a message with a oneof field", target: new(Message),
+				in: `message Foo {
+					oneof foo {
+						string name = 4;
+						SubMessage sub_message = 9;
+					}
+				}`,
+				out: &Message{
+					Name: make(token.Identifier, "Foo"),
+					Def: MessageDef{
+						OneOfs: OneOfs{{
+							Name: make(token.Identifier, "foo"),
+							Fields: Fields{{
+								Type:   make(token.String, ""),
+								Name:   make(token.Identifier, "name"),
+								Number: make(token.DecimalLiteral, "4"),
+							}, {
+								Type:   make(token.Identifier, "SubMessage"),
+								Name:   make(token.Identifier, "sub_message"),
+								Number: make(token.DecimalLiteral, "9"),
+							}},
+						}},
+					},
+				},
+			},
 		},
 	}
 
