@@ -154,12 +154,12 @@ func TestParse(t *testing.T) {
 				out: &Message{
 					Name: make(token.Identifier, "Foo"),
 					Def: MessageDef{
-						&Field{
+						Fields: Fields{{
 							Repeated: true,
 							Type:     make(token.Int32, ""),
 							Name:     make(token.Identifier, "ids"),
 							Number:   make(token.DecimalLiteral, "1"),
-						},
+						}},
 					},
 				},
 			},
@@ -171,16 +171,18 @@ func TestParse(t *testing.T) {
 				out: &Message{
 					Name: make(token.Identifier, "Foo"),
 					Def: MessageDef{
-						&Field{
-							Type:   make(token.Bool, ""),
-							Name:   make(token.Identifier, "foo"),
-							Number: make(token.DecimalLiteral, "1"),
-						},
-						&Field{
-							Repeated: true,
-							Type:     make(token.Int64, ""),
-							Name:     make(token.Identifier, "ids"),
-							Number:   make(token.DecimalLiteral, "2"),
+						Fields: Fields{
+							Field{
+								Type:   make(token.Bool, ""),
+								Name:   make(token.Identifier, "foo"),
+								Number: make(token.DecimalLiteral, "1"),
+							},
+							Field{
+								Repeated: true,
+								Type:     make(token.Int64, ""),
+								Name:     make(token.Identifier, "ids"),
+								Number:   make(token.DecimalLiteral, "2"),
+							},
 						},
 					},
 				},
@@ -192,7 +194,7 @@ func TestParse(t *testing.T) {
 				out: &Message{
 					Name: make(token.Identifier, "Foo"),
 					Def: MessageDef{
-						&Field{
+						Fields: Fields{{
 							Repeated: true,
 							Type:     make(token.Int32, ""),
 							Name:     make(token.Identifier, "ids"),
@@ -201,7 +203,7 @@ func TestParse(t *testing.T) {
 								Name:  &FullIdentifier{[]scanner.Token{make(token.Identifier, "packed")}},
 								Value: Constant{make(token.True, "")},
 							}},
-						},
+						}},
 					},
 				},
 			},
@@ -212,7 +214,7 @@ func TestParse(t *testing.T) {
 				out: &Message{
 					Name: make(token.Identifier, "Foo"),
 					Def: MessageDef{
-						&Field{
+						Fields: Fields{{
 							Repeated: true,
 							Type:     make(token.Int32, ""),
 							Name:     make(token.Identifier, "ids"),
@@ -224,7 +226,7 @@ func TestParse(t *testing.T) {
 								Name:  &FullIdentifier{[]scanner.Token{make(token.Identifier, "json")}},
 								Value: Constant{make(token.StringLiteral, `"-"`)},
 							}},
-						},
+						}},
 					},
 				},
 			},
@@ -240,7 +242,7 @@ func TestParse(t *testing.T) {
 				out: &Message{
 					Name: make(token.Identifier, "Foo"),
 					Def: MessageDef{
-						&Enum{
+						Enums: Enums{{
 							Name: make(token.Identifier, "EnumAllowingAlias"),
 							Def: EnumDef{
 								Options: Options{
@@ -268,7 +270,7 @@ func TestParse(t *testing.T) {
 									},
 								},
 							},
-						},
+						}},
 					},
 				},
 			},
@@ -281,16 +283,16 @@ func TestParse(t *testing.T) {
 				out: &Message{
 					Name: make(token.Identifier, "Foo"),
 					Def: MessageDef{
-						&Message{
+						Messages: Messages{{
 							Name: make(token.Identifier, "Bar"),
 							Def: MessageDef{
-								&Field{
+								Fields: Fields{{
 									Type:   make(token.Int32, ""),
 									Name:   make(token.Identifier, "id"),
 									Number: make(token.DecimalLiteral, "1"),
-								},
+								}},
 							},
-						},
+						}},
 					},
 				},
 			},

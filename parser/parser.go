@@ -262,7 +262,12 @@ func (msg *Message) parse(p *peeker) error {
 }
 
 // MessageDef can be Field, Enum, Message, Option, Oneof, Mapfield, Reserved, or nil.
-type MessageDef []interface{}
+type MessageDef struct {
+	Enums    Enums
+	Messages Messages
+	Options  Options
+	Fields   Fields
+}
 
 func (def *MessageDef) parse(p *peeker) error {
 	logf("> messagedef.parse")
@@ -279,33 +284,46 @@ func (def *MessageDef) parse(p *peeker) error {
 			p.scan()
 			return nil
 		case token.Enum:
-			target = new(Enum)
+			target = &def.Enums
 		case token.Message:
-			target = new(Message)
+			target = &def.Messages
 		case token.Option:
-			target = new(Option)
+			target = &def.Options
 		case token.Oneof:
-		// target = new(Oneof)
+		// target = &def.Oneofs
 		case token.Map:
-		// target = new(MapField)
+		// target = &def.MapFields
 		case token.Reserved:
-		// target = new(Reserved)
+		// target = &def.Reserveds
 		case token.Semicolon:
 		case token.Identifier, token.Repeated:
-			target = new(Field)
+			target = &def.Fields
 		default:
 			if !token.IsType(next.Kind) {
 				return fmt.Errorf("expected '}' to end message definition, got %s", next)
 			}
-			target = new(Field)
+			target = &def.Fields
 		}
 		if target != nil {
 			if err := target.parse(p); err != nil {
 				return err
 			}
-			*def = append(*def, target)
 		}
 	}
+}
+
+type Fields []Field
+
+func (fs *Fields) parse(p *peeker) error {
+	logf("> fields.parse")
+	defer logf("< fields.parse")
+
+	var f Field
+	if err := f.parse(p); err != nil {
+		return err
+	}
+	*fs = append(*fs, f)
+	return nil
 }
 
 type Field struct {
@@ -378,6 +396,17 @@ func (opts *FieldOptions) parse(p *peeker) error {
 	if tok, ok := p.consume(token.CloseBracket); !ok {
 		return fmt.Errorf("expected ']' to close field options, got %s", tok)
 	}
+	return nil
+}
+
+type Enums []Enum
+
+func (enums *Enums) parse(p *peeker) error {
+	var enum Enum
+	if err := enum.parse(p); err != nil {
+		return err
+	}
+	*enums = append(*enums, enum)
 	return nil
 }
 
