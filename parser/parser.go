@@ -45,13 +45,13 @@ func (proto *Proto) parse(p *peeker) error {
 		case token.Syntax:
 			target = &proto.Syntax
 		case token.Import:
-			target = appender{&proto.Imports}
+			target = list{&proto.Imports}
 		case token.Package:
-			target = appender{&proto.Packages}
+			target = list{&proto.Packages}
 		case token.Option:
-			target = appender{&proto.Options}
+			target = list{&proto.Options}
 		case token.Message:
-			target = appender{&proto.Messages}
+			target = list{&proto.Messages}
 		default:
 			return fmt.Errorf("unexpected %v (%s) at top level definition", next.Kind, next.Text)
 		}
@@ -234,25 +234,25 @@ func (def *MessageDef) parse(p *peeker) error {
 			p.scan()
 			return nil
 		case token.Enum:
-			target = appender{&def.Enums}
+			target = list{&def.Enums}
 		case token.Message:
-			target = appender{&def.Messages}
+			target = list{&def.Messages}
 		case token.Option:
-			target = appender{&def.Options}
+			target = list{&def.Options}
 		case token.Oneof:
-			target = appender{&def.OneOfs}
+			target = list{&def.OneOfs}
 		case token.Map:
 		// target = &def.MapFields
 		case token.Reserved:
 		// target = &def.Reserveds
 		case token.Semicolon:
 		case token.Identifier, token.Repeated:
-			target = appender{&def.Fields}
+			target = list{&def.Fields}
 		default:
 			if !token.IsType(next.Kind) {
 				return fmt.Errorf("expected '}' to end message definition, got %s", next)
 			}
-			target = appender{&def.Fields}
+			target = list{&def.Fields}
 		}
 		if target != nil {
 			if err := target.parse(p); err != nil {
@@ -341,14 +341,14 @@ func (def *EnumDef) parse(p *peeker) error {
 			p.scan()
 			return nil
 		case token.Option:
-			target = appender{&def.Options}
+			target = list{&def.Options}
 		case token.Identifier, token.Repeated:
-			target = appender{&def.Fields}
+			target = list{&def.Fields}
 		default:
 			if !token.IsType(next.Kind) {
 				return fmt.Errorf("expected '}' to end message definition, got %s", next)
 			}
-			target = appender{&def.Fields}
+			target = list{&def.Fields}
 		}
 		if target != nil {
 			if err := target.parse(p); err != nil {
@@ -414,7 +414,7 @@ func (o *OneOf) parse(p *peeker) error {
 		if p.peek().Kind == token.CloseBraces {
 			return nil
 		}
-		if err := (appender{&o.Fields}).parse(p); err != nil {
+		if err := (list{&o.Fields}).parse(p); err != nil {
 			return err
 		}
 		if f := o.Fields[len(o.Fields)-1]; f.Repeated {
@@ -512,9 +512,9 @@ func (p *peeker) consume(tokens ...token.Kind) (*scanner.Token, bool) {
 	return nil, true
 }
 
-type appender struct{ s interface{} }
+type list struct{ s interface{} }
 
-func (a appender) parse(p *peeker) error {
+func (a list) parse(p *peeker) error {
 	s := reflect.ValueOf(a.s).Elem()
 	v := reflect.New(s.Type().Elem())
 	if err := v.Interface().(parser).parse(p); err != nil {
