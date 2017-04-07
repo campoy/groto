@@ -9,7 +9,6 @@ import (
 
 	"reflect"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/campoy/groto/scanner"
 	"github.com/campoy/groto/token"
 	"github.com/kr/pretty"
@@ -47,8 +46,6 @@ func checkErrors(t *testing.T, want, got error) bool {
 }
 
 func TestParse(t *testing.T) {
-	logf = logrus.Infof
-
 	tests := map[string][]struct {
 		name   string
 		in     string
@@ -108,34 +105,34 @@ func TestParse(t *testing.T) {
 		},
 
 		"Option": {
-			{name: "good syntax string", in: `option java_package = "com.example.foo";`, target: new(options),
-				out: &options{{
+			{name: "good syntax string", in: `option java_package = "com.example.foo";`, target: new(Option),
+				out: &Option{
 					Name:  ptrFullIdentifier("java_package"),
 					Value: Constant{make(token.StringLiteral, `"com.example.foo"`)},
-				}},
-			},
-			{name: "good syntax full identifer", in: `option java_package = foo.bar;`, target: new(options),
-				out: &options{{
-					Name:  ptrFullIdentifier("java_package"),
-					Value: Constant{fullIdentifier("foo", "bar")}},
 				},
 			},
-			{name: "good syntax integer", in: `option options.number = 42;`, target: new(options),
-				out: &options{{
+			{name: "good syntax full identifer", in: `option java_package = foo.bar;`, target: new(Option),
+				out: &Option{
+					Name:  ptrFullIdentifier("java_package"),
+					Value: Constant{fullIdentifier("foo", "bar")},
+				},
+			},
+			{name: "good syntax integer", in: `option options.number = 42;`, target: new(Option),
+				out: &Option{
 					Name:  ptrFullIdentifier("options", "number"),
 					Value: Constant{make(token.DecimalLiteral, "42")},
-				}},
+				},
 			},
-			{name: "good syntax signed float", in: `option java_package = -10.5;`, target: new(options),
-				out: &options{{
+			{name: "good syntax signed float", in: `option java_package = -10.5;`, target: new(Option),
+				out: &Option{
 					Name: ptrFullIdentifier("java_package"),
 					Value: Constant{SignedNumber{
 						Sign:   make(token.Minus, ""),
 						Number: make(token.FloatLiteral, "10.5"),
 					}},
-				}},
+				},
 			},
-			{name: "bad syntax", in: `option java_package = syntax;`, target: new(options),
+			{name: "bad syntax", in: `option java_package = syntax;`, target: new(Option),
 				err: errors.New(`expected a valid constant value, but got syntax`),
 			},
 		},
@@ -196,7 +193,7 @@ func TestParse(t *testing.T) {
 							Type:     make(token.Int32, ""),
 							Name:     make(token.Identifier, "ids"),
 							Number:   make(token.DecimalLiteral, "1"),
-							Options: options{{
+							Options: []Option{{
 								Name:  ptrFullIdentifier("packed"),
 								Value: Constant{make(token.True, "")},
 							}},
@@ -216,7 +213,7 @@ func TestParse(t *testing.T) {
 							Type:     make(token.Int32, ""),
 							Name:     make(token.Identifier, "ids"),
 							Number:   make(token.DecimalLiteral, "1"),
-							Options: options{{
+							Options: []Option{{
 								Name:  ptrFullIdentifier("packed"),
 								Value: Constant{make(token.True, "")},
 							}, {
@@ -239,7 +236,7 @@ func TestParse(t *testing.T) {
 				out: &Message{
 					Name: make(token.Identifier, "Foo"),
 					Def: MessageDef{
-						Enums: enums{{
+						Enums: []Enum{{
 							Name: make(token.Identifier, "EnumAllowingAlias"),
 							Def: EnumDef{
 								Options: []Option{
@@ -322,7 +319,6 @@ func TestParse(t *testing.T) {
 		t.Run(theme, func(t *testing.T) {
 			for _, tt := range tests {
 				t.Run(tt.name, func(t *testing.T) {
-					log.Printf("\n\n[[[[%s]]]]\n\n", t.Name())
 					s := &peeker{s: scanner.New(strings.NewReader(tt.in))}
 					err := tt.target.parse(s)
 					if !checkErrors(t, tt.err, err) {
@@ -330,6 +326,8 @@ func TestParse(t *testing.T) {
 					}
 					if !reflect.DeepEqual(tt.target, tt.out) {
 						diff := pretty.Diff(tt.target, tt.out)
+						log.Printf("expected: %s", print(tt.out))
+						log.Printf("got: %s", print(tt.target))
 						t.Fatal(diff)
 					}
 				})

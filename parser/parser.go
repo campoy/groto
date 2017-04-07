@@ -8,8 +8,6 @@ import (
 	"github.com/campoy/groto/token"
 )
 
-var logf = func(format string, args ...interface{}) {}
-
 type Proto struct {
 	Syntax   Syntax
 	Imports  []Import
@@ -33,9 +31,6 @@ type parser interface {
 }
 
 func (proto *Proto) parse(p *peeker) error {
-	logf("> proto.parse")
-	defer logf("< proto.parse")
-
 	for {
 		var target parser
 		switch next := p.peek(); next.Kind {
@@ -49,13 +44,13 @@ func (proto *Proto) parse(p *peeker) error {
 		case token.Syntax:
 			target = &proto.Syntax
 		case token.Import:
-			target = (*imports)(&proto.Imports)
+			target = imports{&proto.Imports}
 		case token.Package:
-			target = (*packages)(&proto.Packages)
+			target = packages{&proto.Packages}
 		case token.Option:
-			target = (*options)(&proto.Options)
+			target = options{&proto.Options}
 		case token.Message:
-			target = (*messages)(&proto.Messages)
+			target = messages{&proto.Messages}
 		default:
 			return fmt.Errorf("unexpected %v (%s) at top level definition", next.Kind, next.Text)
 		}
@@ -68,9 +63,6 @@ func (proto *Proto) parse(p *peeker) error {
 type Syntax struct{ Value scanner.Token }
 
 func (s *Syntax) parse(p *peeker) error {
-	logf("> syntax.parse")
-	defer logf("< syntax.parse")
-
 	if tok, ok := p.consume(token.Syntax, token.Equals); !ok {
 		return fmt.Errorf("expected '=', got %s instead", tok.Text)
 	}
@@ -88,29 +80,12 @@ func (s *Syntax) parse(p *peeker) error {
 	return nil
 }
 
-type imports []Import
-
-func (imps *imports) parse(p *peeker) error {
-	logf("> imports.parse")
-	defer logf("< imports.parse")
-
-	var imp Import
-	if err := imp.parse(p); err != nil {
-		return err
-	}
-	*imps = append(*imps, imp)
-	return nil
-}
-
 type Import struct {
 	Modifier scanner.Token
 	Path     scanner.Token
 }
 
 func (imp *Import) parse(p *peeker) error {
-	logf("> import.parse")
-	defer logf("< import.parse")
-
 	if tok, ok := p.consume(token.Import); !ok {
 		return fmt.Errorf("expected 'import' keyword, but instead got %s", tok)
 	}
@@ -126,28 +101,11 @@ func (imp *Import) parse(p *peeker) error {
 	return nil
 }
 
-type packages []Package
-
-func (pkgs *packages) parse(p *peeker) error {
-	logf("> packages.parse")
-	defer logf("< packages.parse")
-
-	var pkg Package
-	if err := pkg.parse(p); err != nil {
-		return err
-	}
-	*pkgs = append(*pkgs, pkg)
-	return nil
-}
-
 type Package struct {
 	Identifier FullIdentifier
 }
 
 func (pkg *Package) parse(p *peeker) error {
-	logf("> package.parse")
-	defer logf("< package.parse")
-
 	if tok, ok := p.consume(token.Package); !ok {
 		return fmt.Errorf("expected keyword package, got %s", tok)
 	}
@@ -160,29 +118,6 @@ func (pkg *Package) parse(p *peeker) error {
 	return nil
 }
 
-type options []Option
-
-func (opts *options) parse(p *peeker) error {
-	logf("> options.parse")
-	defer logf("< options.parse")
-
-	var opt Option
-	if tok, ok := p.consume(token.Option); !ok {
-		return fmt.Errorf("expected keyword option, got %s", tok)
-	}
-
-	if err := opt.parse(p); err != nil {
-		return err
-	}
-
-	if tok, ok := p.consume(token.Semicolon); !ok {
-		return fmt.Errorf("missing semicolon at the end of option statement, got %s", tok)
-	}
-
-	*opts = append(*opts, opt)
-	return nil
-}
-
 type Option struct {
 	Prefix *FullIdentifier
 	Name   *FullIdentifier
@@ -190,9 +125,21 @@ type Option struct {
 }
 
 func (opt *Option) parse(p *peeker) error {
-	logf("> option.parse")
-	defer logf("< option.parse")
+	if tok, ok := p.consume(token.Option); !ok {
+		return fmt.Errorf("expected keyword option, got %s", tok)
+	}
+	if err := (*shortOption)(opt).parse(p); err != nil {
+		return err
+	}
+	if tok, ok := p.consume(token.Semicolon); !ok {
+		return fmt.Errorf("missing semicolon at the end of option statement, got %s", tok)
+	}
+	return nil
+}
 
+type shortOption Option
+
+func (opt *shortOption) parse(p *peeker) error {
 	next := p.peek()
 	if next.Kind == token.OpenParens {
 		p.scan()
@@ -221,24 +168,31 @@ func (opt *Option) parse(p *peeker) error {
 	if next.Kind != token.Equals {
 		return fmt.Errorf("expected '=' between option name and value, got %s", next)
 	}
-	if err := opt.Value.parse(p); err != nil {
-		return err
-	}
-	return nil
+	return opt.Value.parse(p)
 }
 
-type messages []Message
+type optionList struct{ s *[]Option }
 
-func (msgs *messages) parse(p *peeker) error {
-	logf("> messages.parse")
-	defer logf("< messages.parse")
-
-	var msg Message
-	if err := msg.parse(p); err != nil {
-		return err
+func (l optionList) parse(p *peeker) error {
+	if p.peek().Kind != token.OpenBrackets {
+		return nil
 	}
-	*msgs = append(*msgs, msg)
-	return nil
+
+	p.scan()
+	for {
+		var opt shortOption
+		if err := opt.parse(p); err != nil {
+			return err
+		}
+		*l.s = append(*l.s, Option(opt))
+		if p.peek().Kind == token.CloseBracket {
+			p.scan()
+			return nil
+		}
+		if tok, ok := p.consume(token.Comma); !ok {
+			return fmt.Errorf("expected ',' in between options, got %s", tok)
+		}
+	}
 }
 
 type Message struct {
@@ -247,9 +201,6 @@ type Message struct {
 }
 
 func (msg *Message) parse(p *peeker) error {
-	logf("> message.parse")
-	defer logf("< message.parse")
-
 	if tok, ok := p.consume(token.Message); !ok {
 		return fmt.Errorf("expected keyword message, got %s", tok)
 	}
@@ -271,9 +222,6 @@ type MessageDef struct {
 }
 
 func (def *MessageDef) parse(p *peeker) error {
-	logf("> messagedef.parse")
-	defer logf("< messagedef.parse")
-
 	if tok, ok := p.consume(token.OpenBraces); !ok {
 		return fmt.Errorf("expected '{' to start message definition, got %s", tok)
 	}
@@ -285,25 +233,25 @@ func (def *MessageDef) parse(p *peeker) error {
 			p.scan()
 			return nil
 		case token.Enum:
-			target = (*enums)(&def.Enums)
+			target = enums{&def.Enums}
 		case token.Message:
-			target = (*messages)(&def.Messages)
+			target = messages{&def.Messages}
 		case token.Option:
-			target = (*options)(&def.Options)
+			target = options{&def.Options}
 		case token.Oneof:
-			target = (*oneOfs)(&def.OneOfs)
+			target = oneOfs{&def.OneOfs}
 		case token.Map:
 		// target = &def.MapFields
 		case token.Reserved:
 		// target = &def.Reserveds
 		case token.Semicolon:
 		case token.Identifier, token.Repeated:
-			target = (*fields)(&def.Fields)
+			target = fields{&def.Fields}
 		default:
 			if !token.IsType(next.Kind) {
 				return fmt.Errorf("expected '}' to end message definition, got %s", next)
 			}
-			target = (*fields)(&def.Fields)
+			target = fields{&def.Fields}
 		}
 		if target != nil {
 			if err := target.parse(p); err != nil {
@@ -311,20 +259,6 @@ func (def *MessageDef) parse(p *peeker) error {
 			}
 		}
 	}
-}
-
-type fields []Field
-
-func (fs *fields) parse(p *peeker) error {
-	logf("> fields.parse")
-	defer logf("< fields.parse")
-
-	var f Field
-	if err := f.parse(p); err != nil {
-		return err
-	}
-	*fs = append(*fs, f)
-	return nil
 }
 
 type Field struct {
@@ -336,9 +270,6 @@ type Field struct {
 }
 
 func (f *Field) parse(p *peeker) error {
-	logf("> field.parse")
-	defer logf("< field.parse")
-
 	next := p.scan()
 	if next.Kind == token.Repeated {
 		f.Repeated = true
@@ -364,50 +295,13 @@ func (f *Field) parse(p *peeker) error {
 	}
 	f.Number = number
 
-	if err := (*fieldOptions)(&f.Options).parse(p); err != nil {
+	if err := (optionList{&f.Options}).parse(p); err != nil {
 		return err
 	}
 
 	if _, ok := p.consume(token.Semicolon); !ok {
 		return fmt.Errorf("missing semicolon at the end of field definition")
 	}
-	return nil
-}
-
-type fieldOptions []Option
-
-func (opts *fieldOptions) parse(p *peeker) error {
-	if p.peek().Kind != token.OpenBrackets {
-		return nil
-	}
-	p.scan()
-
-	for {
-		var opt Option
-		if err := opt.parse(p); err != nil {
-			return err
-		}
-		*opts = append(*opts, opt)
-		if p.peek().Kind != token.Comma {
-			break
-		}
-		p.scan()
-	}
-
-	if tok, ok := p.consume(token.CloseBracket); !ok {
-		return fmt.Errorf("expected ']' to close field options, got %s", tok)
-	}
-	return nil
-}
-
-type enums []Enum
-
-func (enums *enums) parse(p *peeker) error {
-	var enum Enum
-	if err := enum.parse(p); err != nil {
-		return err
-	}
-	*enums = append(*enums, enum)
 	return nil
 }
 
@@ -435,9 +329,6 @@ type EnumDef struct {
 }
 
 func (def *EnumDef) parse(p *peeker) error {
-	logf("> enumdef.parse")
-	defer logf("< enumdef.parse")
-
 	if tok, ok := p.consume(token.OpenBraces); !ok {
 		return fmt.Errorf("expected '{' to start message definition, got %s", tok)
 	}
@@ -449,14 +340,14 @@ func (def *EnumDef) parse(p *peeker) error {
 			p.scan()
 			return nil
 		case token.Option:
-			target = (*options)(&def.Options)
+			target = options{&def.Options}
 		case token.Identifier, token.Repeated:
-			target = (*enumFields)(&def.Fields)
+			target = enumFields{&def.Fields}
 		default:
 			if !token.IsType(next.Kind) {
 				return fmt.Errorf("expected '}' to end message definition, got %s", next)
 			}
-			target = (*enumFields)(&def.Fields)
+			target = enumFields{&def.Fields}
 		}
 		if target != nil {
 			if err := target.parse(p); err != nil {
@@ -466,20 +357,6 @@ func (def *EnumDef) parse(p *peeker) error {
 	}
 }
 
-type enumFields []EnumField
-
-func (fs *enumFields) parse(p *peeker) error {
-	logf("> enumfields.parse")
-	defer logf("< enumfields.parse")
-
-	var f EnumField
-	if err := f.parse(p); err != nil {
-		return err
-	}
-	*fs = append(*fs, f)
-	return nil
-}
-
 type EnumField struct {
 	Name    scanner.Token
 	Number  scanner.Token
@@ -487,9 +364,6 @@ type EnumField struct {
 }
 
 func (f *EnumField) parse(p *peeker) error {
-	logf("> enumfield.parse")
-	defer logf("< enumfield.parse")
-
 	next := p.scan()
 	if next.Kind != token.Identifier {
 		return fmt.Errorf("expected field name, got %s", next)
@@ -506,7 +380,7 @@ func (f *EnumField) parse(p *peeker) error {
 	}
 	f.Number = number
 
-	if err := (*fieldOptions)(&f.Options).parse(p); err != nil {
+	if err := (optionList{&f.Options}).parse(p); err != nil {
 		return err
 	}
 
@@ -516,29 +390,12 @@ func (f *EnumField) parse(p *peeker) error {
 	return nil
 }
 
-type oneOfs []OneOf
-
-func (os *oneOfs) parse(p *peeker) error {
-	logf("> oneofs.parse")
-	defer logf("< oneofs.parse")
-
-	var o OneOf
-	if err := o.parse(p); err != nil {
-		return err
-	}
-	*os = append(*os, o)
-	return nil
-}
-
 type OneOf struct {
 	Name   scanner.Token
 	Fields []Field
 }
 
 func (o *OneOf) parse(p *peeker) error {
-	logf("> oneof.parse")
-	defer logf("< oneof.parse")
-
 	if tok, ok := p.consume(token.Oneof); !ok {
 		return fmt.Errorf("expected keyword enum, got %s", tok)
 	}
@@ -556,7 +413,7 @@ func (o *OneOf) parse(p *peeker) error {
 		if p.peek().Kind == token.CloseBraces {
 			return nil
 		}
-		if err := (*fields)(&o.Fields).parse(p); err != nil {
+		if err := (fields{&o.Fields}).parse(p); err != nil {
 			return err
 		}
 		if f := o.Fields[len(o.Fields)-1]; f.Repeated {
@@ -570,9 +427,6 @@ type FullIdentifier struct {
 }
 
 func (ident *FullIdentifier) parse(p *peeker) error {
-	logf("> fullidentifier.parse")
-	defer logf("< fullidentifier.parse")
-
 	next := p.scan()
 	if next.Kind != token.Identifier {
 		return fmt.Errorf("expected identifier, got %s", next)
@@ -602,9 +456,6 @@ type SignedNumber struct {
 }
 
 func (c *Constant) parse(p *peeker) error {
-	logf("> constant.parse")
-	defer logf("< constant.parse")
-
 	switch next := p.peek(); {
 	case token.IsConstant(next.Kind):
 		c.Value = p.scan()
@@ -633,7 +484,6 @@ type peeker struct {
 }
 
 func (p *peeker) scan() (res scanner.Token) {
-	defer func() { logf("scan: %s", res) }()
 	if tok := p.peeked; tok != nil {
 		p.peeked = nil
 		return *tok
@@ -643,7 +493,6 @@ func (p *peeker) scan() (res scanner.Token) {
 }
 
 func (p *peeker) peek() (res scanner.Token) {
-	defer func() { logf("peek: %s", res) }()
 	if tok := p.peeked; tok != nil {
 		return *tok
 	}
@@ -660,4 +509,94 @@ func (p *peeker) consume(tokens ...token.Kind) (*scanner.Token, bool) {
 		}
 	}
 	return nil, true
+}
+
+// all the slice types that do the same thing
+
+type imports struct{ s *[]Import }
+
+func (imps imports) parse(p *peeker) error {
+	var imp Import
+	if err := imp.parse(p); err != nil {
+		return err
+	}
+	*imps.s = append(*imps.s, imp)
+	return nil
+}
+
+type packages struct{ s *[]Package }
+
+func (pkgs packages) parse(p *peeker) error {
+	var pkg Package
+	if err := pkg.parse(p); err != nil {
+		return err
+	}
+	*pkgs.s = append(*pkgs.s, pkg)
+	return nil
+}
+
+type messages struct{ s *[]Message }
+
+func (msgs messages) parse(p *peeker) error {
+	var msg Message
+	if err := msg.parse(p); err != nil {
+		return err
+	}
+	*msgs.s = append(*msgs.s, msg)
+	return nil
+}
+
+type fields struct{ s *[]Field }
+
+func (fs fields) parse(p *peeker) error {
+	var f Field
+	if err := f.parse(p); err != nil {
+		return err
+	}
+	*fs.s = append(*fs.s, f)
+	return nil
+}
+
+type enums struct{ s *[]Enum }
+
+func (enums enums) parse(p *peeker) error {
+	var enum Enum
+	if err := enum.parse(p); err != nil {
+		return err
+	}
+	*enums.s = append(*enums.s, enum)
+	return nil
+}
+
+type enumFields struct{ s *[]EnumField }
+
+func (fs enumFields) parse(p *peeker) error {
+	var f EnumField
+	if err := f.parse(p); err != nil {
+		return err
+	}
+	*fs.s = append(*fs.s, f)
+	return nil
+}
+
+type oneOfs struct{ s *[]OneOf }
+
+func (os oneOfs) parse(p *peeker) error {
+	var o OneOf
+	if err := o.parse(p); err != nil {
+		return err
+	}
+	*os.s = append(*os.s, o)
+	return nil
+}
+
+type options struct{ s *[]Option }
+
+func (opts options) parse(p *peeker) error {
+	var opt Option
+	if err := opt.parse(p); err != nil {
+		return err
+	}
+	*opts.s = append(*opts.s, opt)
+	return nil
 }
