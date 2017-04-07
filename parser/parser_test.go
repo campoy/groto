@@ -3,6 +3,7 @@ package parser
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"strings"
 	"testing"
@@ -58,16 +59,16 @@ func TestParse(t *testing.T) {
 				out: &Syntax{make(token.StringLiteral, `"proto3"`)},
 			},
 			{name: "missing equal", in: `syntax "proto3";`, target: new(Syntax),
-				err: errors.New(`expected '=', got "proto3" instead`),
+				err: errors.New(`expected Equals, got string literal ("proto3")`),
 			},
 			{name: "bad text", in: `syntax = "proto2";`, target: new(Syntax),
 				err: errors.New(`expected literal string "proto3", got "proto2" instead`),
 			},
 			{name: "missing semicolon", in: `syntax = "proto3"`, target: new(Syntax),
-				err: errors.New(`missing semicolon at the end of the syntax statement`),
+				err: errors.New(`expected Semicolon, got e o f`),
 			},
 			{name: "missing quotes", in: `syntax = proto3;`, target: new(Syntax),
-				err: errors.New(`expected literal string "proto3", got a Identifier instead`),
+				err: errors.New(`expected StringLiteral, got identifier (proto3)`),
 			},
 		},
 
@@ -82,13 +83,13 @@ func TestParse(t *testing.T) {
 				out: &Import{Path: make(token.StringLiteral, `"path"`), Modifier: make(token.Weak, "")},
 			},
 			{name: "bad modifier", in: `import bytes "path";`, target: new(Import),
-				err: errors.New(`expected imported package name, got bytes`),
+				err: errors.New(`expected StringLiteral, got bytes`),
 			},
 			{name: "bad modifier keyword", in: `import enum "path";`, target: new(Import),
-				err: errors.New(`expected imported package name, got enum`),
+				err: errors.New(`expected StringLiteral, got enum`),
 			},
 			{name: "bad import path", in: `import public path;`, target: new(Import),
-				err: errors.New(`expected imported package name, got identifier (path)`),
+				err: errors.New(`expected StringLiteral, got identifier (path)`),
 			},
 		},
 
@@ -100,7 +101,7 @@ func TestParse(t *testing.T) {
 				out: &Package{fullIdentifier("com", "example", "foo")},
 			},
 			{name: "bad identifier", in: `package "foo";`, target: new(Package),
-				err: errors.New("expected identifier, got string literal (\"foo\")"),
+				err: errors.New(`expected Identifier, got string literal ("foo")`),
 			},
 		},
 
@@ -320,7 +321,15 @@ func TestParse(t *testing.T) {
 			for _, tt := range tests {
 				t.Run(tt.name, func(t *testing.T) {
 					s := &peeker{s: scanner.New(strings.NewReader(tt.in))}
-					err := tt.target.parse(s)
+					var err error
+					func() {
+						defer func() {
+							if rec := recover(); rec != nil {
+								err = fmt.Errorf("%v", rec)
+							}
+						}()
+						tt.target.parse(s)
+					}()
 					if !checkErrors(t, tt.err, err) {
 						return
 					}
