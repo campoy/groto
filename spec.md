@@ -2,31 +2,9 @@
 
 Proto = Syntax { Import | Package | Option | Message | Enum | Service | EmptyStatement }
 
-Syntax = syntax equals strLit semicolon // the strLit should be proto3
-
-Import = import [ weak | public ] strLit semicolon 
-
-Package = package fullIdent semicolon
-
-Option = option OptionName equals Constant semicolon
-OptionName = ( ident | openParens fullIdent closeParens ) { dot ident }
 
 Message = message ident MessageBody
 MessageBody = openBraces { Field | Enum | Message | Option | Oneof | MapField | Reserved | semicolon } closeBraces
-
-Field = [ repeated ] Type ident equals intLit MaybeFieldOptions semicolon
-MaybeFieldOptions = [ openBracket FieldOptions closeBracket ]
-FieldOptions = FieldOption { comma  FieldOption }
-FieldOption = OptionName "=" Constant
-
-Enum = enum ident EnumBody
-EnumBody = openBraces { Option | EnumField | semicolon } closeBraces
-EnumField = ident equals intLit [ openBrackets EnumValueOptions closeBrackets ] semicolon
-EnumValueOptions = EnumValueOption { comma EnumValueOption }
-EnumValueOption = OptionName equals Constant
-
-Oneof = oneof ident openBraces { OneofField | semicolon } closeBraces
-OneofField = Type ident equals intLit MaybeFieldOptions semicolon
 
 MapField = map openAngled keyType* comma Type closeAngled ident equals intLit MaybeFieldOptions semicolon
 
