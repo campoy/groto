@@ -256,40 +256,30 @@ func parseField(p *peeker) Field {
 }
 
 type Enum struct {
-	Name scanner.Token
-	Def  EnumDef
-}
-
-func parseEnum(p *peeker) Enum {
-	p.consume(token.Enum)
-	return Enum{
-		Name: p.consume(token.Identifier),
-		Def:  parseEnumDef(p),
-	}
-}
-
-type EnumDef struct {
+	Name    scanner.Token
 	Fields  []EnumField
 	Options []Option
 }
 
-func parseEnumDef(p *peeker) EnumDef {
+func parseEnum(p *peeker) Enum {
+	p.consume(token.Enum)
+	enum := Enum{Name: p.consume(token.Identifier)}
 	p.consume(token.OpenBraces)
-	var def EnumDef
+
 	for {
 		switch next := p.peek(); next.Kind {
 		case token.CloseBraces:
 			p.scan()
-			return def
+			return enum
 		case token.Option:
-			def.Options = append(def.Options, parseOption(p))
+			enum.Options = append(enum.Options, parseOption(p))
 		case token.Identifier, token.Repeated:
-			def.Fields = append(def.Fields, parseEnumField(p))
+			enum.Fields = append(enum.Fields, parseEnumField(p))
 		default:
 			if !token.IsType(next.Kind) {
 				panicf("expected '}' to end message definition, got %s", next)
 			}
-			def.Fields = append(def.Fields, parseEnumField(p))
+			enum.Fields = append(enum.Fields, parseEnumField(p))
 		}
 	}
 }

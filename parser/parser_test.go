@@ -132,30 +132,28 @@ func TestParseProto(t *testing.T) {
 							Enums: []Enum{
 								{
 									Name: make(token.Identifier, "Corpus"),
-									Def: EnumDef{
-										Fields: []EnumField{
-											{
-												Name:   make(token.Identifier, "UNIVERSAL"),
-												Number: make(token.DecimalLiteral, "0"),
-											}, {
-												Name:   make(token.Identifier, "WEB"),
-												Number: make(token.DecimalLiteral, "1"),
-											}, {
-												Name:   make(token.Identifier, "IMAGES"),
-												Number: make(token.DecimalLiteral, "2"),
-											}, {
-												Name:   make(token.Identifier, "LOCAL"),
-												Number: make(token.DecimalLiteral, "3"),
-											}, {
-												Name:   make(token.Identifier, "NEWS"),
-												Number: make(token.DecimalLiteral, "4"),
-											}, {
-												Name:   make(token.Identifier, "PRODUCTS"),
-												Number: make(token.DecimalLiteral, "5"),
-											}, {
-												Name:   make(token.Identifier, "VIDEO"),
-												Number: make(token.DecimalLiteral, "6"),
-											},
+									Fields: []EnumField{
+										{
+											Name:   make(token.Identifier, "UNIVERSAL"),
+											Number: make(token.DecimalLiteral, "0"),
+										}, {
+											Name:   make(token.Identifier, "WEB"),
+											Number: make(token.DecimalLiteral, "1"),
+										}, {
+											Name:   make(token.Identifier, "IMAGES"),
+											Number: make(token.DecimalLiteral, "2"),
+										}, {
+											Name:   make(token.Identifier, "LOCAL"),
+											Number: make(token.DecimalLiteral, "3"),
+										}, {
+											Name:   make(token.Identifier, "NEWS"),
+											Number: make(token.DecimalLiteral, "4"),
+										}, {
+											Name:   make(token.Identifier, "PRODUCTS"),
+											Number: make(token.DecimalLiteral, "5"),
+										}, {
+											Name:   make(token.Identifier, "VIDEO"),
+											Number: make(token.DecimalLiteral, "6"),
 										},
 									},
 								},
@@ -187,24 +185,22 @@ func TestParseProto(t *testing.T) {
 				Enums: []Enum{
 					{
 						Name: make(token.Identifier, "EnumAllowingAlias"),
-						Def: EnumDef{
-							Fields: []EnumField{
-								{
-									Name:   make(token.Identifier, "UNKNOWN"),
-									Number: make(token.DecimalLiteral, "0"),
-								}, {
-									Name:   make(token.Identifier, "STARTED"),
-									Number: make(token.DecimalLiteral, "1"),
-								}, {
-									Name:   make(token.Identifier, "RUNNING"),
-									Number: make(token.DecimalLiteral, "1"),
-								},
+						Fields: []EnumField{
+							{
+								Name:   make(token.Identifier, "UNKNOWN"),
+								Number: make(token.DecimalLiteral, "0"),
+							}, {
+								Name:   make(token.Identifier, "STARTED"),
+								Number: make(token.DecimalLiteral, "1"),
+							}, {
+								Name:   make(token.Identifier, "RUNNING"),
+								Number: make(token.DecimalLiteral, "1"),
 							},
-							Options: []Option{
-								{
-									Name:  ptrFullIdentifier("allow_alias"),
-									Value: Constant{make(token.True, "")},
-								},
+						},
+						Options: []Option{
+							{
+								Name:  ptrFullIdentifier("allow_alias"),
+								Value: Constant{make(token.True, "")},
 							},
 						},
 					},
@@ -492,14 +488,14 @@ func TestParseMessage(t *testing.T) {
 				Def: MessageDef{
 					Enums: []Enum{{
 						Name: make(token.Identifier, "EnumAllowingAlias"),
-						Def: EnumDef{
-							Options: []Option{
-								{
-									Name:  ptrFullIdentifier("allow_alias"),
-									Value: Constant{make(token.True, "")},
-								},
+						Options: []Option{
+							{
+								Name:  ptrFullIdentifier("allow_alias"),
+								Value: Constant{make(token.True, "")},
 							},
-							Fields: []EnumField{{
+						},
+						Fields: []EnumField{
+							{
 								Name:   make(token.Identifier, "UNKNOWN"),
 								Number: make(token.DecimalLiteral, "0"),
 							}, {
@@ -512,7 +508,6 @@ func TestParseMessage(t *testing.T) {
 									Prefix: ptrFullIdentifier("custom_option"),
 									Value:  Constant{make(token.StringLiteral, `"hello world"`)},
 								}},
-							},
 							},
 						},
 					}},
