@@ -4,14 +4,7 @@ Proto = Syntax { Import | Package | Option | Message | Enum | Service | EmptySta
 
 
 Message = message ident MessageBody
-MessageBody = openBraces { Field | Enum | Message | Option | Oneof | MapField | Reserved | semicolon } closeBraces
-
-MapField = map openAngled keyType* comma Type closeAngled ident equals intLit MaybeFieldOptions semicolon
-
-Reserved = reserved ( Ranges | FieldNames ) semicolon
-Ranges = Range { comma Range }
-Range = ( intLit | intLit to intLit ) 
-FieldNames = ident { comma ident }
+MessageBody = openBraces {  Reserved  } closeBraces
 
 
 Service = service ident openBrace { Option | RPC | semicolon } closeBrace
@@ -45,7 +38,7 @@ package
 public
 repeated
 reserved
-returns
+returnsgit 
 rpc
 service
 stream

@@ -107,6 +107,7 @@ func Punctuation(s string) Kind { return punctuation[s] }
 func IsConstant(k Kind) bool { return k > first_constant && k < last_constant }
 func IsNumber(k Kind) bool   { return k > first_number && k < last_number }
 func IsType(k Kind) bool     { return k > first_type && k < last_type }
+func IsKeyType(k Kind) bool  { return k > first_key_type && k < last_type }
 
 func from(a, b Kind) map[string]Kind {
 	m := make(map[string]Kind, b-a-1)

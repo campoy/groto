@@ -31,6 +31,187 @@ func ptrFullIdentifier(names ...string) *FullIdentifier {
 	return &f
 }
 
+func TestParseProto(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		out  *Proto
+		err  error
+	}{
+		{name: "big message", in: `
+			syntax = "proto3";
+
+			package foo.bar;
+
+			import public "new.proto";
+			import "other.proto";
+
+			option java_package = "com.example.foo";
+			option go_package = "foo";
+
+			message SearchRequest {
+				string query = 1;
+				int32 page_number = 2;  // Which page number do we want?
+				int32 result_per_page = 3;  // Number of results to return per page.
+				enum Corpus {
+					UNIVERSAL = 0;
+					WEB = 1;
+					IMAGES = 2;
+					LOCAL = 3;
+					NEWS = 4;
+					PRODUCTS = 5;
+					VIDEO = 6;
+				}
+				Corpus corpus = 4;
+			}
+
+			message Foo {
+				reserved 2, 15, 9 to 11;
+				reserved "foo", "bar";
+			}
+
+			enum EnumAllowingAlias {
+				option allow_alias = true;
+				UNKNOWN = 0;
+				STARTED = 1;
+				RUNNING = 1;
+			}
+			`,
+			out: &Proto{
+				Syntax:  Syntax{make(token.StringLiteral, `"proto3"`)},
+				Package: Package{fullIdentifier("foo", "bar")},
+				Imports: []Import{{
+					Modifier: make(token.Public, ""),
+					Path:     make(token.StringLiteral, `"new.proto"`),
+				}, {
+					Path: make(token.StringLiteral, `"other.proto"`),
+				}},
+				Options: []Option{{
+					Name:  ptrFullIdentifier("java_package"),
+					Value: Constant{make(token.StringLiteral, `"com.example.foo"`)},
+				}, {
+					Name:  ptrFullIdentifier("go_package"),
+					Value: Constant{make(token.StringLiteral, `"foo"`)},
+				}},
+				Messages: []Message{
+					{
+						Name: make(token.Identifier, "SearchRequest"),
+						Def: MessageDef{
+							Fields: []Field{
+								{
+									Type:   make(token.String, ""),
+									Name:   make(token.Identifier, "query"),
+									Number: make(token.DecimalLiteral, "1"),
+								}, {
+									Type:   make(token.Int32, ""),
+									Name:   make(token.Identifier, "page_number"),
+									Number: make(token.DecimalLiteral, "2"),
+								}, {
+									Type:   make(token.Int32, ""),
+									Name:   make(token.Identifier, "result_per_page"),
+									Number: make(token.DecimalLiteral, "3"),
+								}, {
+									Type:   make(token.Identifier, "Corpus"),
+									Name:   make(token.Identifier, "corpus"),
+									Number: make(token.DecimalLiteral, "4"),
+								},
+							},
+							Enums: []Enum{
+								{
+									Name: make(token.Identifier, "Corpus"),
+									Def: EnumDef{
+										Fields: []EnumField{
+											{
+												Name:   make(token.Identifier, "UNIVERSAL"),
+												Number: make(token.DecimalLiteral, "0"),
+											}, {
+												Name:   make(token.Identifier, "WEB"),
+												Number: make(token.DecimalLiteral, "1"),
+											}, {
+												Name:   make(token.Identifier, "IMAGES"),
+												Number: make(token.DecimalLiteral, "2"),
+											}, {
+												Name:   make(token.Identifier, "LOCAL"),
+												Number: make(token.DecimalLiteral, "3"),
+											}, {
+												Name:   make(token.Identifier, "NEWS"),
+												Number: make(token.DecimalLiteral, "4"),
+											}, {
+												Name:   make(token.Identifier, "PRODUCTS"),
+												Number: make(token.DecimalLiteral, "5"),
+											}, {
+												Name:   make(token.Identifier, "VIDEO"),
+												Number: make(token.DecimalLiteral, "6"),
+											},
+										},
+									},
+								},
+							},
+						},
+					}, {
+						Name: make(token.Identifier, "Foo"),
+						Def: MessageDef{
+							Reserveds: []Reserved{
+								{
+									IDs: []scanner.Token{
+										make(token.DecimalLiteral, "2"),
+										make(token.DecimalLiteral, "15"),
+									},
+									Ranges: []Range{{
+										make(token.DecimalLiteral, "9"),
+										make(token.DecimalLiteral, "11"),
+									}},
+								}, {
+									Names: []scanner.Token{
+										make(token.StringLiteral, `"foo"`),
+										make(token.StringLiteral, `"bar"`),
+									},
+								},
+							},
+						},
+					},
+				},
+				Enums: []Enum{
+					{
+						Name: make(token.Identifier, "EnumAllowingAlias"),
+						Def: EnumDef{
+							Fields: []EnumField{
+								{
+									Name:   make(token.Identifier, "UNKNOWN"),
+									Number: make(token.DecimalLiteral, "0"),
+								}, {
+									Name:   make(token.Identifier, "STARTED"),
+									Number: make(token.DecimalLiteral, "1"),
+								}, {
+									Name:   make(token.Identifier, "RUNNING"),
+									Number: make(token.DecimalLiteral, "1"),
+								},
+							},
+							Options: []Option{
+								{
+									Name:  ptrFullIdentifier("allow_alias"),
+									Value: Constant{make(token.True, "")},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := &peeker{s: scanner.New(strings.NewReader(tt.in))}
+			proto, err := parseProto(p)
+			if !checkErrors(t, tt.err, err) {
+				return
+			}
+			checkResults(t, tt.out, proto)
+		})
+	}
+}
+
 func TestParseSyntax(t *testing.T) {
 	tests := []struct {
 		name string
@@ -368,6 +549,48 @@ func TestParseMessage(t *testing.T) {
 							Name:   make(token.Identifier, "sub_message"),
 							Number: make(token.DecimalLiteral, "9"),
 						}},
+					}},
+				},
+			},
+		},
+		{name: "a message with a map field",
+			in: `message Foo {
+					map<string, Project> projects = 3;
+				}`,
+			out: Message{
+				Name: make(token.Identifier, "Foo"),
+				Def: MessageDef{
+					Maps: []Map{{
+						Name:      make(token.Identifier, "projects"),
+						KeyType:   make(token.String, ""),
+						ValueType: fullIdentifier("Project"),
+						Number:    make(token.DecimalLiteral, "3"),
+					}},
+				},
+			},
+		},
+		{name: "a message with a map field",
+			in: `message Foo {
+					reserved 2, 15, 9 to 11;
+					reserved "foo", "bar";
+				}`,
+			out: Message{
+				Name: make(token.Identifier, "Foo"),
+				Def: MessageDef{
+					Reserveds: []Reserved{{
+						IDs: []scanner.Token{
+							make(token.DecimalLiteral, "2"),
+							make(token.DecimalLiteral, "15"),
+						},
+						Ranges: []Range{{
+							make(token.DecimalLiteral, "9"),
+							make(token.DecimalLiteral, "11"),
+						}},
+					}, {
+						Names: []scanner.Token{
+							make(token.StringLiteral, `"foo"`),
+							make(token.StringLiteral, `"bar"`),
+						},
 					}},
 				},
 			},
