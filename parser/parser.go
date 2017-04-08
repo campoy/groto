@@ -11,6 +11,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Package parser provides the function Parse, which given an io.Reader parses
+// its content and generates a Proto which contains all the definitions found
+// in a Protocol Buffer Version 3 file descriptor (aka .proto file).
+//
+// You can read more about the language here:
+// https://developers.google.com/protocol-buffers/docs/proto3#oneof
 package parser
 
 import (
@@ -22,6 +28,7 @@ import (
 	"github.com/campoy/groto/token"
 )
 
+// A Proto contains all the information that one can define in a .proto file.
 type Proto struct {
 	Syntax   Syntax
 	Package  Package
@@ -32,6 +39,8 @@ type Proto struct {
 	Services []Service
 }
 
+// Parse reads from the given io.Reader and returns the parsed information in
+// a Proto value, or an error if the contents where not parseable.
 func Parse(r io.Reader) (*Proto, error) {
 	return parseProto(&peeker{s: scanner.New(r)})
 }
@@ -70,6 +79,7 @@ func parseProto(p *peeker) (proto *Proto, err error) {
 	}
 }
 
+// Syntax defines the protobuf version, it is always "proto3".
 type Syntax struct{ Value scanner.Token }
 
 // syntax = "syntax" "=" quote "proto3" quote ";"
@@ -84,6 +94,8 @@ func parseSyntax(p *peeker) Syntax {
 	return Syntax{value}
 }
 
+// An Import statement is used to import definitions from other files.
+// The Modifier can be either token.Weak or token.Public.
 type Import struct {
 	Modifier scanner.Token
 	Path     scanner.Token
@@ -101,6 +113,7 @@ func parseImport(p *peeker) Import {
 	return Import{Modifier: mod, Path: path}
 }
 
+// A Package statement can be used to prevent name clashes between protocol message types.
 type Package struct {
 	Identifier FullIdentifier
 }
@@ -113,6 +126,10 @@ func parsePackage(p *peeker) Package {
 	return Package{ident}
 }
 
+// An Option can be used in proto files, messages, enums and services.
+// An option can be a protobuf defined option or a custom option.
+// For more information, see Options in the language guide.
+// https://developers.google.com/protocol-buffers/docs/proto3#options
 type Option struct {
 	Prefix FullIdentifier // Parenthesised part of the identifier, if any.
 	Name   FullIdentifier
@@ -165,6 +182,10 @@ func parseFieldOptions(p *peeker) []Option {
 	}
 }
 
+// A Message consists of a message name and a message body.
+// The message body can have fields, nested enum definitions,
+// nested message definitions, options, oneofs, map fields,
+// and reserved statements.
 type Message struct {
 	Name      scanner.Token
 	Fields    []Field
@@ -210,9 +231,10 @@ func parseMessage(p *peeker) Message {
 	}
 }
 
+// Fields are the basic elements of a protocol buffer message.
 type Field struct {
 	Repeated bool
-	Type     scanner.Token
+	Type     Type
 	Name     scanner.Token
 	Number   scanner.Token
 	Options  []Option
@@ -225,6 +247,8 @@ func parseField(p *peeker) Field {
 	return Field{Repeated: repeated, Type: f.Type, Name: f.Name, Number: f.Number, Options: f.Options}
 }
 
+// An Enum consists of a name and an enum body.
+// The enum body can have options and enum fields.
 type Enum struct {
 	Name    scanner.Token
 	Fields  []EnumField
@@ -252,6 +276,7 @@ func parseEnum(p *peeker) Enum {
 	}
 }
 
+// An EnumField is one of the values defined in an Enum.
 type EnumField struct {
 	Name    scanner.Token
 	Number  scanner.Token
@@ -269,6 +294,8 @@ func parseEnumField(p *peeker) EnumField {
 	return EnumField{Name: name, Number: number, Options: opts}
 }
 
+// A OneOf provides a way to define when only one of a set of fields
+// can be set at any time.
 type OneOf struct {
 	Name   scanner.Token
 	Fields []OneOfField
@@ -288,8 +315,9 @@ func parseOneOf(p *peeker) OneOf {
 	}
 }
 
+// A OneOfField is one of the possible fields in a OneOf statement.
 type OneOfField struct {
-	Type    scanner.Token
+	Type    Type
 	Name    scanner.Token
 	Number  scanner.Token
 	Options []Option
@@ -297,10 +325,7 @@ type OneOfField struct {
 
 // oneofField = type fieldName "=" fieldNumber [ "[" fieldOptions "]" ] ";"
 func parseOneOfField(p *peeker) OneOfField {
-	typ := p.scan()
-	if !typ.Is(token.Identifier) && !typ.IsType() {
-		panicf("expected field type, got %s", typ)
-	}
+	typ := parseType(p)
 	name := p.consume(token.Identifier)
 	p.consume(token.Equals)
 	number := p.consume(token.DecimalLiteral)
@@ -310,6 +335,8 @@ func parseOneOfField(p *peeker) OneOfField {
 	return OneOfField{Type: typ, Name: name, Number: number, Options: opts}
 }
 
+// A Map field has a key type, value type, name, and field number.
+// The key type can be any integral or string type.
 type Map struct {
 	KeyType   scanner.Token
 	ValueType Type
@@ -355,12 +382,15 @@ func parseType(p *peeker) Type {
 	return Type{UserDefined: parseFullIdentifier(p)}
 }
 
+// A Reserved statement declares a range of field numbers or field
+// names that cannot be used in this message.
 type Reserved struct {
 	IDs    []scanner.Token
 	Names  []scanner.Token
 	Ranges []Range
 }
 
+// A Range defines a range of values that are reserved in a Reserved statement.
 type Range struct{ From, To scanner.Token }
 
 // reserved = "reserved" ( ranges | fieldNames ) ";"
@@ -390,6 +420,7 @@ func parseReserved(p *peeker) Reserved {
 	}
 }
 
+// A Service is defined by its name and a list of RPC methods.
 type Service struct {
 	Name    scanner.Token
 	Options []Option
@@ -417,6 +448,8 @@ func parseService(p *peeker) Service {
 	}
 }
 
+// A RPC method defines a remote procedure call with a name,
+// input and output types, and options.
 type RPC struct {
 	Name    scanner.Token
 	In      RPCParam
@@ -445,6 +478,7 @@ func parseRPC(p *peeker) RPC {
 	}
 }
 
+// An RPCParam defines an input or output parameter for an RPC service.
 type RPCParam struct {
 	Stream bool
 	Type   FullIdentifier
@@ -459,6 +493,7 @@ func parseRPCParam(p *peeker) RPCParam {
 	return RPCParam{Stream: stream, Type: typ}
 }
 
+// A FullIdentifier is a series of identifiers joined by dots.
 type FullIdentifier []scanner.Token
 
 func parseFullIdentifier(p *peeker) FullIdentifier {
@@ -473,6 +508,7 @@ func parseFullIdentifier(p *peeker) FullIdentifier {
 	}
 }
 
+// A SignedNumber contains a sign token.Plus or token.Minus and a number literal.
 type SignedNumber struct {
 	Sign, Number scanner.Token
 }

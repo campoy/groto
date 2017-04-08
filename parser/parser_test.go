@@ -108,19 +108,19 @@ func TestParseProto(t *testing.T) {
 						Name: make(token.Identifier, "SearchRequest"),
 						Fields: []Field{
 							{
-								Type:   make(token.String, ""),
+								Type:   Type{Predefined: make(token.String, "")},
 								Name:   make(token.Identifier, "query"),
 								Number: make(token.DecimalLiteral, "1"),
 							}, {
-								Type:   make(token.Int32, ""),
+								Type:   Type{Predefined: make(token.Int32, "")},
 								Name:   make(token.Identifier, "page_number"),
 								Number: make(token.DecimalLiteral, "2"),
 							}, {
-								Type:   make(token.Int32, ""),
+								Type:   Type{Predefined: make(token.Int32, "")},
 								Name:   make(token.Identifier, "result_per_page"),
 								Number: make(token.DecimalLiteral, "3"),
 							}, {
-								Type:   make(token.Identifier, "Corpus"),
+								Type:   Type{UserDefined: fullIdentifier("Corpus")},
 								Name:   make(token.Identifier, "corpus"),
 								Number: make(token.DecimalLiteral, "4"),
 							},
@@ -394,7 +394,7 @@ func TestParseMessage(t *testing.T) {
 				Name: make(token.Identifier, "Foo"),
 				Fields: []Field{{
 					Repeated: true,
-					Type:     make(token.Int32, ""),
+					Type:     Type{Predefined: make(token.Int32, "")},
 					Name:     make(token.Identifier, "ids"),
 					Number:   make(token.DecimalLiteral, "1"),
 				}},
@@ -408,12 +408,12 @@ func TestParseMessage(t *testing.T) {
 			out: Message{
 				Name: make(token.Identifier, "Foo"),
 				Fields: []Field{{
-					Type:   make(token.Bool, ""),
+					Type:   Type{Predefined: make(token.Bool, "")},
 					Name:   make(token.Identifier, "foo"),
 					Number: make(token.DecimalLiteral, "1"),
 				}, {
 					Repeated: true,
-					Type:     make(token.Int64, ""),
+					Type:     Type{Predefined: make(token.Int64, "")},
 					Name:     make(token.Identifier, "ids"),
 					Number:   make(token.DecimalLiteral, "2"),
 				}},
@@ -427,7 +427,7 @@ func TestParseMessage(t *testing.T) {
 				Name: make(token.Identifier, "Foo"),
 				Fields: []Field{{
 					Repeated: true,
-					Type:     make(token.Int32, ""),
+					Type:     Type{Predefined: make(token.Int32, "")},
 					Name:     make(token.Identifier, "ids"),
 					Number:   make(token.DecimalLiteral, "1"),
 					Options: []Option{{
@@ -445,7 +445,7 @@ func TestParseMessage(t *testing.T) {
 				Name: make(token.Identifier, "Foo"),
 				Fields: []Field{{
 					Repeated: true,
-					Type:     make(token.Int32, ""),
+					Type:     Type{Predefined: make(token.Int32, "")},
 					Name:     make(token.Identifier, "ids"),
 					Number:   make(token.DecimalLiteral, "1"),
 					Options: []Option{{
@@ -507,7 +507,7 @@ func TestParseMessage(t *testing.T) {
 				Messages: []Message{{
 					Name: make(token.Identifier, "Bar"),
 					Fields: []Field{{
-						Type:   make(token.Int32, ""),
+						Type:   Type{Predefined: make(token.Int32, "")},
 						Name:   make(token.Identifier, "id"),
 						Number: make(token.DecimalLiteral, "1"),
 					}},
@@ -526,11 +526,11 @@ func TestParseMessage(t *testing.T) {
 				OneOfs: []OneOf{{
 					Name: make(token.Identifier, "foo"),
 					Fields: []OneOfField{{
-						Type:   make(token.String, ""),
+						Type:   Type{Predefined: make(token.String, "")},
 						Name:   make(token.Identifier, "name"),
 						Number: make(token.DecimalLiteral, "4"),
 					}, {
-						Type:   make(token.Identifier, "SubMessage"),
+						Type:   Type{UserDefined: fullIdentifier("SubMessage")},
 						Name:   make(token.Identifier, "sub_message"),
 						Number: make(token.DecimalLiteral, "9"),
 					}},
