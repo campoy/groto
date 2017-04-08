@@ -134,9 +134,9 @@ func parseOption(p *peeker) Option {
 // fieldOption = optionName "=" constant
 func parseFieldOption(p *peeker) Option {
 	var opt Option
-	if _, ok := p.maybeConsume(token.OpenParens); ok {
+	if _, ok := p.maybeConsume(token.OpenParen); ok {
 		opt.Prefix = parseFullIdentifier(p)
-		p.consume(token.CloseParens)
+		p.consume(token.CloseParen)
 	}
 
 	if p.peek().Kind == token.Identifier {
@@ -154,7 +154,7 @@ func parseFieldOption(p *peeker) Option {
 
 // fieldOptions = [ "[" fieldOption { ","  fieldOption } "]" ]
 func parseFieldOptions(p *peeker) []Option {
-	if _, ok := p.maybeConsume(token.OpenBrackets); !ok {
+	if _, ok := p.maybeConsume(token.OpenBracket); !ok {
 		return nil
 	}
 
@@ -184,7 +184,7 @@ type Message struct {
 func parseMessage(p *peeker) Message {
 	p.consume(token.Message)
 	msg := Message{Name: p.consume(token.Identifier)}
-	p.consume(token.OpenBraces)
+	p.consume(token.OpenBrace)
 
 	for {
 		switch kind := p.peek().Kind; {
@@ -204,7 +204,7 @@ func parseMessage(p *peeker) Message {
 			msg.Reserveds = append(msg.Reserveds, parseReserved(p))
 		case kind == token.Semicolon:
 			p.scan()
-		case kind == token.CloseBraces:
+		case kind == token.CloseBrace:
 			p.scan()
 			return msg
 		default:
@@ -238,7 +238,7 @@ type Enum struct {
 func parseEnum(p *peeker) Enum {
 	p.consume(token.Enum)
 	enum := Enum{Name: p.consume(token.Identifier)}
-	p.consume(token.OpenBraces)
+	p.consume(token.OpenBrace)
 
 	for {
 		switch kind := p.peek().Kind; {
@@ -246,7 +246,7 @@ func parseEnum(p *peeker) Enum {
 			enum.Fields = append(enum.Fields, parseEnumField(p))
 		case kind == token.Option:
 			enum.Options = append(enum.Options, parseOption(p))
-		case kind == token.CloseBraces:
+		case kind == token.CloseBrace:
 			p.scan()
 			return enum
 		default:
@@ -281,10 +281,10 @@ type OneOf struct {
 func parseOneOf(p *peeker) OneOf {
 	p.consume(token.Oneof)
 	o := OneOf{Name: p.consume(token.Identifier)}
-	p.consume(token.OpenBraces)
+	p.consume(token.OpenBrace)
 
 	for {
-		if _, ok := p.maybeConsume(token.CloseBraces); ok {
+		if _, ok := p.maybeConsume(token.CloseBrace); ok {
 			return o
 		}
 		o.Fields = append(o.Fields, parseOneOfField(p))
@@ -404,14 +404,14 @@ func parseService(p *peeker) Service {
 	p.consume(token.Service)
 	svc := Service{Name: p.consume(token.Identifier)}
 
-	p.consume(token.OpenBraces)
+	p.consume(token.OpenBrace)
 	for {
 		switch p.peek().Kind {
 		case token.Option:
 			svc.Options = append(svc.Options, parseOption(p))
 		case token.RPC:
 			svc.RPCs = append(svc.RPCs, parseRPC(p))
-		case token.CloseBraces:
+		case token.CloseBrace:
 			p.scan()
 			return svc
 		default:
@@ -439,9 +439,9 @@ func parseRPC(p *peeker) RPC {
 		return rpc
 	}
 
-	p.consume(token.OpenBraces)
+	p.consume(token.OpenBrace)
 	for {
-		if _, ok := p.maybeConsume(token.CloseBraces); ok {
+		if _, ok := p.maybeConsume(token.CloseBrace); ok {
 			return rpc
 		}
 		rpc.Options = append(rpc.Options, parseOption(p))
@@ -455,10 +455,10 @@ type RPCParam struct {
 
 // rpcParam = "(" [ "stream" ] messageType ")"
 func parseRPCParam(p *peeker) RPCParam {
-	p.consume(token.OpenParens)
+	p.consume(token.OpenParen)
 	_, stream := p.maybeConsume(token.Stream)
 	typ := parseFullIdentifier(p)
-	p.consume(token.CloseParens)
+	p.consume(token.CloseParen)
 	return RPCParam{Stream: stream, Type: typ}
 }
 

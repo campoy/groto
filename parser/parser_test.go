@@ -223,16 +223,16 @@ func TestParseSyntax(t *testing.T) {
 			out: Syntax{make(token.StringLiteral, `"proto3"`)},
 		},
 		{name: "missing equal", in: `syntax "proto3";`,
-			err: errors.New(`expected Equals, got string literal ("proto3")`),
+			err: errors.New(`expected '=', got string literal ("proto3")`),
 		},
 		{name: "bad text", in: `syntax = "proto2";`,
 			err: errors.New(`expected literal string "proto3", got "proto2" instead`),
 		},
 		{name: "missing semicolon", in: `syntax = "proto3"`,
-			err: errors.New(`expected Semicolon, got e o f`),
+			err: errors.New(`expected ';', got end of file`),
 		},
 		{name: "missing quotes", in: `syntax = proto3;`,
-			err: errors.New(`expected StringLiteral, got identifier (proto3)`),
+			err: errors.New(`expected string literal, got identifier (proto3)`),
 		},
 	}
 
@@ -266,13 +266,13 @@ func TestParseImport(t *testing.T) {
 			out: Import{Path: make(token.StringLiteral, `"path"`), Modifier: make(token.Weak, "")},
 		},
 		{name: "bad modifier", in: `import bytes "path";`,
-			err: errors.New(`expected StringLiteral, got bytes`),
+			err: errors.New(`expected string literal, got bytes`),
 		},
 		{name: "bad modifier keyword", in: `import enum "path";`,
-			err: errors.New(`expected StringLiteral, got enum`),
+			err: errors.New(`expected string literal, got enum`),
 		},
 		{name: "bad import path", in: `import public path;`,
-			err: errors.New(`expected StringLiteral, got identifier (path)`),
+			err: errors.New(`expected string literal, got identifier (path)`),
 		},
 	}
 
@@ -303,7 +303,7 @@ func TestParsePackage(t *testing.T) {
 			out: Package{fullIdentifier("com", "example", "foo")},
 		},
 		{name: "bad identifier", in: `package "foo";`,
-			err: errors.New(`expected Identifier, got string literal ("foo")`),
+			err: errors.New(`expected identifier, got string literal ("foo")`),
 		},
 	}
 

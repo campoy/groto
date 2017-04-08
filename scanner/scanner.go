@@ -17,7 +17,6 @@ import (
 	"bufio"
 	"fmt"
 	"io"
-	"strings"
 	"unicode"
 
 	"github.com/campoy/groto/token"
@@ -37,19 +36,10 @@ type Token struct {
 }
 
 func (t Token) String() string {
-	var name string
-	for _, r := range t.Kind.String() {
-		if unicode.IsUpper(r) {
-			name += fmt.Sprintf(" %c", unicode.ToLower(r))
-		} else {
-			name += string(r)
-		}
-	}
-	name = strings.TrimSpace(name)
 	if t.Text == "" {
-		return name
+		return t.Kind.String()
 	}
-	return fmt.Sprintf("%s (%s)", name, t.Text)
+	return fmt.Sprintf("%s (%s)", t.Kind, t.Text)
 }
 
 func (s *Scanner) emit(kind token.Kind, value []rune) Token {
