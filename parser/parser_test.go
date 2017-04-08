@@ -57,6 +57,8 @@ func TestParseProto(t *testing.T) {
 			option java_package = "com.example.foo";
 			option go_package = "foo";
 
+			// this is a comment
+
 			message SearchRequest {
 				string query = 1;
 				int32 page_number = 2;  // Which page number do we want?

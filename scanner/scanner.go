@@ -31,7 +31,7 @@ type Scanner struct {
 }
 
 type Token struct {
-	Kind token.Kind
+	token.Kind
 	Text string
 }
 

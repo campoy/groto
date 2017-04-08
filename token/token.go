@@ -134,20 +134,23 @@ func Type(s string) Kind { return types[s] }
 // Otherwise it returns Illegal.
 func Punctuation(s string) Kind { return punctuation[s] }
 
+// Is returns true if the given kind is equal to the receiver of the method.
+func (k Kind) Is(kind Kind) bool { return k == kind }
+
 // IsKeyword returns true only if the given Kind is a keyword.
-func IsKeyword(k Kind) bool { return k > first_keyword && k < last_keyword }
+func (k Kind) IsKeyword() bool { return k > first_keyword && k < last_keyword }
 
 // IsConstant returns true only if the given Kind is a constant.
-func IsConstant(k Kind) bool { return k > first_constant && k < last_constant }
+func (k Kind) IsConstant() bool { return k > first_constant && k < last_constant }
 
 // IsNumber returns true only if the given Kind is a number.
-func IsNumber(k Kind) bool { return k > first_number && k < last_number }
+func (k Kind) IsNumber() bool { return k > first_number && k < last_number }
 
 // IsType returns true only if the given Kind is a type.
-func IsType(k Kind) bool { return k > first_type && k < last_type }
+func (k Kind) IsType() bool { return k > first_type && k < last_type }
 
 // IsKeyType returns true only if the given Kind is a valid map key type.
-func IsKeyType(k Kind) bool { return k > first_key_type && k < last_type }
+func (k Kind) IsKeyType() bool { return k > first_key_type && k < last_type }
 
 func from(a, b Kind) map[string]Kind {
 	m := make(map[string]Kind, b-a-1)

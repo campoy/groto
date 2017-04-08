@@ -62,9 +62,6 @@ func parseProto(p *peeker) (proto *Proto, err error) {
 			proto.Enums = append(proto.Enums, parseEnum(p))
 		case token.Service:
 			proto.Services = append(proto.Services, parseService(p))
-		case token.Semicolon, token.Comment:
-			// we ignore comments and empty statements
-			continue
 		case token.EOF:
 			return proto, nil
 		default:
@@ -139,7 +136,7 @@ func parseFieldOption(p *peeker) Option {
 		p.consume(token.CloseParen)
 	}
 
-	if p.peek().Kind == token.Identifier {
+	if p.peek().Is(token.Identifier) {
 		opt.Name = parseFullIdentifier(p)
 	}
 
@@ -188,7 +185,7 @@ func parseMessage(p *peeker) Message {
 
 	for {
 		switch kind := p.peek().Kind; {
-		case token.IsType(kind) || kind == token.Identifier || kind == token.Repeated:
+		case kind.IsType() || kind == token.Identifier || kind == token.Repeated:
 			msg.Fields = append(msg.Fields, parseField(p))
 		case kind == token.Enum:
 			msg.Enums = append(msg.Enums, parseEnum(p))
@@ -242,7 +239,7 @@ func parseEnum(p *peeker) Enum {
 
 	for {
 		switch kind := p.peek().Kind; {
-		case token.IsType(kind) || kind == token.Identifier || kind == token.Repeated:
+		case kind.IsType() || kind == token.Identifier || kind == token.Repeated:
 			enum.Fields = append(enum.Fields, parseEnumField(p))
 		case kind == token.Option:
 			enum.Options = append(enum.Options, parseOption(p))
@@ -301,7 +298,7 @@ type OneOfField struct {
 // oneofField = type fieldName "=" fieldNumber [ "[" fieldOptions "]" ] ";"
 func parseOneOfField(p *peeker) OneOfField {
 	typ := p.scan()
-	if typ.Kind != token.Identifier && !token.IsType(typ.Kind) {
+	if !typ.Is(token.Identifier) && !typ.IsType() {
 		panicf("expected field type, got %s", typ)
 	}
 	name := p.consume(token.Identifier)
@@ -326,7 +323,7 @@ func parseMap(p *peeker) Map {
 	p.consume(token.Map)
 	p.consume(token.OpenAngled)
 	key := p.scan()
-	if !token.IsKeyType(key.Kind) {
+	if !key.IsKeyType() {
 		panicf("expected key type, got %s", key)
 	}
 	p.consume(token.Comma)
@@ -352,7 +349,7 @@ type Type struct {
 //       | "sint32" | "sint64" | "fixed32" | "fixed64" | "sfixed32" | "sfixed64"
 //       | "bool" | "string" | "bytes" | messageType | enumType
 func parseType(p *peeker) Type {
-	if token.IsType(p.peek().Kind) {
+	if p.peek().IsType() {
 		return Type{Predefined: p.scan()}
 	}
 	return Type{UserDefined: parseFullIdentifier(p)}
@@ -380,7 +377,7 @@ func parseReserved(p *peeker) Reserved {
 		if _, ok := p.maybeConsume(token.To); ok {
 			res.Ranges = append(res.Ranges, Range{from, p.consume(from.Kind)})
 		} else {
-			if from.Kind == token.DecimalLiteral {
+			if from.Is(token.DecimalLiteral) {
 				res.IDs = append(res.IDs, from)
 			} else {
 				res.Names = append(res.Names, from)
@@ -468,7 +465,7 @@ func parseFullIdentifier(p *peeker) FullIdentifier {
 	ident := FullIdentifier{p.consume(token.Identifier)}
 	for {
 		dot := p.peek()
-		if dot.Kind != token.Dot {
+		if !dot.Is(token.Dot) {
 			return ident
 		}
 		p.scan()
@@ -482,16 +479,16 @@ type SignedNumber struct {
 
 func parseConstant(p *peeker) interface{} {
 	switch next := p.peek(); {
-	case token.IsConstant(next.Kind):
+	case next.IsConstant():
 		return p.scan()
-	case next.Kind == token.Plus || next.Kind == token.Minus:
+	case next.Is(token.Plus) || next.Is(token.Minus):
 		p.scan()
 		number := p.scan()
-		if !token.IsNumber(number.Kind) {
+		if !number.IsNumber() {
 			panicf("expected number after %v, got %v", next.Kind, number.Kind)
 		}
 		return SignedNumber{next, number}
-	case next.Kind == token.Identifier:
+	case next.Is(token.Identifier):
 		return parseFullIdentifier(p)
 	default:
 		panicf("expected a valid constant value, but got %s", next)
@@ -512,7 +509,7 @@ func (p *peeker) scan() (res scanner.Token) {
 		return *tok
 	}
 	tok := p.s.Scan()
-	for tok.Kind == token.Comment {
+	for tok.Is(token.Comment) {
 		tok = p.s.Scan()
 	}
 	return tok
@@ -523,7 +520,7 @@ func (p *peeker) peek() (res scanner.Token) {
 		return *tok
 	}
 	tok := p.s.Scan()
-	for tok.Kind == token.Comment {
+	for tok.Is(token.Comment) {
 		tok = p.s.Scan()
 	}
 	p.peeked = &tok
