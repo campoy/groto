@@ -11,6 +11,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Package scanner provides the Scanner type that is able to read from any
+// io.Reader and generate tokens.
 package scanner
 
 import (
@@ -22,19 +24,23 @@ import (
 	"github.com/campoy/groto/token"
 )
 
+// New creates a new Scanner reading from the given io.Reader.
 func New(r io.Reader) *Scanner {
 	return &Scanner{r: bufio.NewReader(r)}
 }
 
+// A Scanner scans tokens from the io.Reader given at construction.
 type Scanner struct {
 	r *bufio.Reader
 }
 
+// A Token is defined by its kind, and sometimes by some text.
 type Token struct {
 	token.Kind
 	Text string
 }
 
+// String returns a human readable representation of a Token.
 func (t Token) String() string {
 	if t.Text == "" {
 		return t.Kind.String()
@@ -46,6 +52,10 @@ func (s *Scanner) emit(kind token.Kind, value []rune) Token {
 	return Token{Kind: kind, Text: string(value)}
 }
 
+// Scan returns the next token found in the given io.Reader.
+// If an error occurs the Token will be of kind Illegal, and
+// the text includes information about the error.
+// If the io.Reader reaches EOF, the token will be of kind EOF.
 func (s *Scanner) Scan() (tok Token) {
 	s.readWhile(isSpace)
 
@@ -70,8 +80,6 @@ func (s *Scanner) Scan() (tok Token) {
 	}
 }
 
-// IDENTIFIERS
-
 func (s *Scanner) identifier() Token {
 	value := s.readWhile(or(isLetter, isDecimalDigit, equals(underscore)))
 
@@ -89,8 +97,6 @@ func (s *Scanner) identifier() Token {
 	}
 }
 
-// STRINGS
-
 func (s *Scanner) string() Token {
 	first := s.read()
 	value := []rune{first}
@@ -103,8 +109,6 @@ func (s *Scanner) string() Token {
 	}
 }
 
-// COMMENTS
-
 func (s *Scanner) comment() Token {
 	value := []rune{s.read(), s.read()}
 	if string(value) != "//" {
@@ -114,8 +118,6 @@ func (s *Scanner) comment() Token {
 	value = append(value, s.readUntil(equals('\n'))...)
 	return s.emit(token.Comment, value)
 }
-
-// NUMBERS
 
 func (s *Scanner) number() Token {
 	first := s.read()
@@ -174,8 +176,6 @@ func (s *Scanner) hex(value []rune) Token {
 	return s.emit(token.HexLiteral, value)
 }
 
-// Utility functions for the scanner
-
 func (s *Scanner) read() rune {
 	r, _, err := s.r.ReadRune()
 	if err == io.EOF {
@@ -215,8 +215,6 @@ func (s *Scanner) readUntil(p runePredicate) []rune {
 
 func (s *Scanner) readWhile(p runePredicate) []rune { return s.readUntil(not(p)) }
 
-// Character classes
-
 type runePredicate func(rune) bool
 
 var (
@@ -243,7 +241,6 @@ func or(fs ...runePredicate) runePredicate {
 }
 
 const (
-	lineBreak   rune = '\n'
 	underscore  rune = '_'
 	eof         rune = 0
 	dot         rune = '.'
