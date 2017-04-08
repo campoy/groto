@@ -109,74 +109,70 @@ func TestParseProto(t *testing.T) {
 				Messages: []Message{
 					{
 						Name: make(token.Identifier, "SearchRequest"),
-						Def: MessageDef{
-							Fields: []Field{
-								{
-									Type:   make(token.String, ""),
-									Name:   make(token.Identifier, "query"),
-									Number: make(token.DecimalLiteral, "1"),
-								}, {
-									Type:   make(token.Int32, ""),
-									Name:   make(token.Identifier, "page_number"),
-									Number: make(token.DecimalLiteral, "2"),
-								}, {
-									Type:   make(token.Int32, ""),
-									Name:   make(token.Identifier, "result_per_page"),
-									Number: make(token.DecimalLiteral, "3"),
-								}, {
-									Type:   make(token.Identifier, "Corpus"),
-									Name:   make(token.Identifier, "corpus"),
-									Number: make(token.DecimalLiteral, "4"),
-								},
+						Fields: []Field{
+							{
+								Type:   make(token.String, ""),
+								Name:   make(token.Identifier, "query"),
+								Number: make(token.DecimalLiteral, "1"),
+							}, {
+								Type:   make(token.Int32, ""),
+								Name:   make(token.Identifier, "page_number"),
+								Number: make(token.DecimalLiteral, "2"),
+							}, {
+								Type:   make(token.Int32, ""),
+								Name:   make(token.Identifier, "result_per_page"),
+								Number: make(token.DecimalLiteral, "3"),
+							}, {
+								Type:   make(token.Identifier, "Corpus"),
+								Name:   make(token.Identifier, "corpus"),
+								Number: make(token.DecimalLiteral, "4"),
 							},
-							Enums: []Enum{
-								{
-									Name: make(token.Identifier, "Corpus"),
-									Fields: []EnumField{
-										{
-											Name:   make(token.Identifier, "UNIVERSAL"),
-											Number: make(token.DecimalLiteral, "0"),
-										}, {
-											Name:   make(token.Identifier, "WEB"),
-											Number: make(token.DecimalLiteral, "1"),
-										}, {
-											Name:   make(token.Identifier, "IMAGES"),
-											Number: make(token.DecimalLiteral, "2"),
-										}, {
-											Name:   make(token.Identifier, "LOCAL"),
-											Number: make(token.DecimalLiteral, "3"),
-										}, {
-											Name:   make(token.Identifier, "NEWS"),
-											Number: make(token.DecimalLiteral, "4"),
-										}, {
-											Name:   make(token.Identifier, "PRODUCTS"),
-											Number: make(token.DecimalLiteral, "5"),
-										}, {
-											Name:   make(token.Identifier, "VIDEO"),
-											Number: make(token.DecimalLiteral, "6"),
-										},
+						},
+						Enums: []Enum{
+							{
+								Name: make(token.Identifier, "Corpus"),
+								Fields: []EnumField{
+									{
+										Name:   make(token.Identifier, "UNIVERSAL"),
+										Number: make(token.DecimalLiteral, "0"),
+									}, {
+										Name:   make(token.Identifier, "WEB"),
+										Number: make(token.DecimalLiteral, "1"),
+									}, {
+										Name:   make(token.Identifier, "IMAGES"),
+										Number: make(token.DecimalLiteral, "2"),
+									}, {
+										Name:   make(token.Identifier, "LOCAL"),
+										Number: make(token.DecimalLiteral, "3"),
+									}, {
+										Name:   make(token.Identifier, "NEWS"),
+										Number: make(token.DecimalLiteral, "4"),
+									}, {
+										Name:   make(token.Identifier, "PRODUCTS"),
+										Number: make(token.DecimalLiteral, "5"),
+									}, {
+										Name:   make(token.Identifier, "VIDEO"),
+										Number: make(token.DecimalLiteral, "6"),
 									},
 								},
 							},
 						},
 					}, {
 						Name: make(token.Identifier, "Foo"),
-						Def: MessageDef{
-							Reserveds: []Reserved{
-								{
-									IDs: []scanner.Token{
-										make(token.DecimalLiteral, "2"),
-										make(token.DecimalLiteral, "15"),
-									},
-									Ranges: []Range{{
-										make(token.DecimalLiteral, "9"),
-										make(token.DecimalLiteral, "11"),
-									}},
-								}, {
-									Names: []scanner.Token{
-										make(token.StringLiteral, `"foo"`),
-										make(token.StringLiteral, `"bar"`),
-									},
+						Reserveds: []Reserved{
+							{
+								IDs: []scanner.Token{
+									make(token.DecimalLiteral, "2"),
+									make(token.DecimalLiteral, "15"),
+								},
+								Ranges: []Range{{
+									make(token.DecimalLiteral, "9"),
+									make(token.DecimalLiteral, "11"),
+								}},
+							}, {
+								Names: []scanner.Token{
+									make(token.StringLiteral, `"foo"`),
+									make(token.StringLiteral, `"bar"`),
 								},
 							},
 						},
@@ -399,14 +395,12 @@ func TestParseMessage(t *testing.T) {
 				}`,
 			out: Message{
 				Name: make(token.Identifier, "Foo"),
-				Def: MessageDef{
-					Fields: []Field{{
-						Repeated: true,
-						Type:     make(token.Int32, ""),
-						Name:     make(token.Identifier, "ids"),
-						Number:   make(token.DecimalLiteral, "1"),
-					}},
-				},
+				Fields: []Field{{
+					Repeated: true,
+					Type:     make(token.Int32, ""),
+					Name:     make(token.Identifier, "ids"),
+					Number:   make(token.DecimalLiteral, "1"),
+				}},
 			},
 		},
 		{name: "message with two fields",
@@ -416,19 +410,16 @@ func TestParseMessage(t *testing.T) {
 				}`,
 			out: Message{
 				Name: make(token.Identifier, "Foo"),
-				Def: MessageDef{
-					Fields: []Field{{
-						Type:   make(token.Bool, ""),
-						Name:   make(token.Identifier, "foo"),
-						Number: make(token.DecimalLiteral, "1"),
-					}, {
-						Repeated: true,
-						Type:     make(token.Int64, ""),
-						Name:     make(token.Identifier, "ids"),
-						Number:   make(token.DecimalLiteral, "2"),
-					},
-					},
-				},
+				Fields: []Field{{
+					Type:   make(token.Bool, ""),
+					Name:   make(token.Identifier, "foo"),
+					Number: make(token.DecimalLiteral, "1"),
+				}, {
+					Repeated: true,
+					Type:     make(token.Int64, ""),
+					Name:     make(token.Identifier, "ids"),
+					Number:   make(token.DecimalLiteral, "2"),
+				}},
 			},
 		},
 		{name: "simple message with one option",
@@ -437,18 +428,16 @@ func TestParseMessage(t *testing.T) {
 				}`,
 			out: Message{
 				Name: make(token.Identifier, "Foo"),
-				Def: MessageDef{
-					Fields: []Field{{
-						Repeated: true,
-						Type:     make(token.Int32, ""),
-						Name:     make(token.Identifier, "ids"),
-						Number:   make(token.DecimalLiteral, "1"),
-						Options: []Option{{
-							Name:  ptrFullIdentifier("packed"),
-							Value: Constant{make(token.True, "")},
-						}},
+				Fields: []Field{{
+					Repeated: true,
+					Type:     make(token.Int32, ""),
+					Name:     make(token.Identifier, "ids"),
+					Number:   make(token.DecimalLiteral, "1"),
+					Options: []Option{{
+						Name:  ptrFullIdentifier("packed"),
+						Value: Constant{make(token.True, "")},
 					}},
-				},
+				}},
 			},
 		},
 		{name: "simple message with two options",
@@ -457,21 +446,19 @@ func TestParseMessage(t *testing.T) {
 				}`,
 			out: Message{
 				Name: make(token.Identifier, "Foo"),
-				Def: MessageDef{
-					Fields: []Field{{
-						Repeated: true,
-						Type:     make(token.Int32, ""),
-						Name:     make(token.Identifier, "ids"),
-						Number:   make(token.DecimalLiteral, "1"),
-						Options: []Option{{
-							Name:  ptrFullIdentifier("packed"),
-							Value: Constant{make(token.True, "")},
-						}, {
-							Name:  ptrFullIdentifier("json"),
-							Value: Constant{make(token.StringLiteral, `"-"`)},
-						}},
+				Fields: []Field{{
+					Repeated: true,
+					Type:     make(token.Int32, ""),
+					Name:     make(token.Identifier, "ids"),
+					Number:   make(token.DecimalLiteral, "1"),
+					Options: []Option{{
+						Name:  ptrFullIdentifier("packed"),
+						Value: Constant{make(token.True, "")},
+					}, {
+						Name:  ptrFullIdentifier("json"),
+						Value: Constant{make(token.StringLiteral, `"-"`)},
 					}},
-				},
+				}},
 			},
 		},
 		{name: "simple message with an enum",
@@ -485,33 +472,31 @@ func TestParseMessage(t *testing.T) {
 				}`,
 			out: Message{
 				Name: make(token.Identifier, "Foo"),
-				Def: MessageDef{
-					Enums: []Enum{{
-						Name: make(token.Identifier, "EnumAllowingAlias"),
-						Options: []Option{
-							{
-								Name:  ptrFullIdentifier("allow_alias"),
-								Value: Constant{make(token.True, "")},
-							},
+				Enums: []Enum{{
+					Name: make(token.Identifier, "EnumAllowingAlias"),
+					Options: []Option{
+						{
+							Name:  ptrFullIdentifier("allow_alias"),
+							Value: Constant{make(token.True, "")},
 						},
-						Fields: []EnumField{
-							{
-								Name:   make(token.Identifier, "UNKNOWN"),
-								Number: make(token.DecimalLiteral, "0"),
-							}, {
-								Name:   make(token.Identifier, "STARTED"),
-								Number: make(token.DecimalLiteral, "1"),
-							}, {
-								Name:   make(token.Identifier, "RUNNING"),
-								Number: make(token.DecimalLiteral, "2"),
-								Options: []Option{{
-									Prefix: ptrFullIdentifier("custom_option"),
-									Value:  Constant{make(token.StringLiteral, `"hello world"`)},
-								}},
-							},
+					},
+					Fields: []EnumField{
+						{
+							Name:   make(token.Identifier, "UNKNOWN"),
+							Number: make(token.DecimalLiteral, "0"),
+						}, {
+							Name:   make(token.Identifier, "STARTED"),
+							Number: make(token.DecimalLiteral, "1"),
+						}, {
+							Name:   make(token.Identifier, "RUNNING"),
+							Number: make(token.DecimalLiteral, "2"),
+							Options: []Option{{
+								Prefix: ptrFullIdentifier("custom_option"),
+								Value:  Constant{make(token.StringLiteral, `"hello world"`)},
+							}},
 						},
-					}},
-				},
+					},
+				}},
 			},
 		},
 		{name: "a message inside of a message",
@@ -522,18 +507,14 @@ func TestParseMessage(t *testing.T) {
 				}`,
 			out: Message{
 				Name: make(token.Identifier, "Foo"),
-				Def: MessageDef{
-					Messages: []Message{{
-						Name: make(token.Identifier, "Bar"),
-						Def: MessageDef{
-							Fields: []Field{{
-								Type:   make(token.Int32, ""),
-								Name:   make(token.Identifier, "id"),
-								Number: make(token.DecimalLiteral, "1"),
-							}},
-						},
+				Messages: []Message{{
+					Name: make(token.Identifier, "Bar"),
+					Fields: []Field{{
+						Type:   make(token.Int32, ""),
+						Name:   make(token.Identifier, "id"),
+						Number: make(token.DecimalLiteral, "1"),
 					}},
-				},
+				}},
 			},
 		},
 		{name: "a message with a oneof field",
@@ -545,20 +526,18 @@ func TestParseMessage(t *testing.T) {
 				}`,
 			out: Message{
 				Name: make(token.Identifier, "Foo"),
-				Def: MessageDef{
-					OneOfs: []OneOf{{
-						Name: make(token.Identifier, "foo"),
-						Fields: []Field{{
-							Type:   make(token.String, ""),
-							Name:   make(token.Identifier, "name"),
-							Number: make(token.DecimalLiteral, "4"),
-						}, {
-							Type:   make(token.Identifier, "SubMessage"),
-							Name:   make(token.Identifier, "sub_message"),
-							Number: make(token.DecimalLiteral, "9"),
-						}},
+				OneOfs: []OneOf{{
+					Name: make(token.Identifier, "foo"),
+					Fields: []Field{{
+						Type:   make(token.String, ""),
+						Name:   make(token.Identifier, "name"),
+						Number: make(token.DecimalLiteral, "4"),
+					}, {
+						Type:   make(token.Identifier, "SubMessage"),
+						Name:   make(token.Identifier, "sub_message"),
+						Number: make(token.DecimalLiteral, "9"),
 					}},
-				},
+				}},
 			},
 		},
 		{name: "a message with a map field",
@@ -567,14 +546,12 @@ func TestParseMessage(t *testing.T) {
 				}`,
 			out: Message{
 				Name: make(token.Identifier, "Foo"),
-				Def: MessageDef{
-					Maps: []Map{{
-						Name:      make(token.Identifier, "projects"),
-						KeyType:   make(token.String, ""),
-						ValueType: fullIdentifier("Project"),
-						Number:    make(token.DecimalLiteral, "3"),
-					}},
-				},
+				Maps: []Map{{
+					Name:      make(token.Identifier, "projects"),
+					KeyType:   make(token.String, ""),
+					ValueType: fullIdentifier("Project"),
+					Number:    make(token.DecimalLiteral, "3"),
+				}},
 			},
 		},
 		{name: "a message with a map field",
@@ -584,23 +561,21 @@ func TestParseMessage(t *testing.T) {
 				}`,
 			out: Message{
 				Name: make(token.Identifier, "Foo"),
-				Def: MessageDef{
-					Reserveds: []Reserved{{
-						IDs: []scanner.Token{
-							make(token.DecimalLiteral, "2"),
-							make(token.DecimalLiteral, "15"),
-						},
-						Ranges: []Range{{
-							make(token.DecimalLiteral, "9"),
-							make(token.DecimalLiteral, "11"),
-						}},
-					}, {
-						Names: []scanner.Token{
-							make(token.StringLiteral, `"foo"`),
-							make(token.StringLiteral, `"bar"`),
-						},
+				Reserveds: []Reserved{{
+					IDs: []scanner.Token{
+						make(token.DecimalLiteral, "2"),
+						make(token.DecimalLiteral, "15"),
+					},
+					Ranges: []Range{{
+						make(token.DecimalLiteral, "9"),
+						make(token.DecimalLiteral, "11"),
 					}},
-				},
+				}, {
+					Names: []scanner.Token{
+						make(token.StringLiteral, `"foo"`),
+						make(token.StringLiteral, `"bar"`),
+					},
+				}},
 			},
 		},
 	}

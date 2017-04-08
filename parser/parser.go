@@ -175,19 +175,7 @@ func parseOptionList(p *peeker) []Option {
 }
 
 type Message struct {
-	Name scanner.Token
-	Def  MessageDef
-}
-
-func parseMessage(p *peeker) Message {
-	p.consume(token.Message)
-	return Message{
-		Name: p.consume(token.Identifier),
-		Def:  parseMessageDef(p),
-	}
-}
-
-type MessageDef struct {
+	Name      scanner.Token
 	Fields    []Field
 	Enums     []Enum
 	Messages  []Message
@@ -197,37 +185,37 @@ type MessageDef struct {
 	Reserveds []Reserved
 }
 
-func parseMessageDef(p *peeker) MessageDef {
+func parseMessage(p *peeker) Message {
+	p.consume(token.Message)
+	msg := Message{Name: p.consume(token.Identifier)}
 	p.consume(token.OpenBraces)
-
-	var def MessageDef
 
 	for {
 		switch next := p.peek(); next.Kind {
 		case token.CloseBraces:
 			p.scan()
-			return def
+			return msg
 		case token.Enum:
-			def.Enums = append(def.Enums, parseEnum(p))
+			msg.Enums = append(msg.Enums, parseEnum(p))
 		case token.Message:
-			def.Messages = append(def.Messages, parseMessage(p))
+			msg.Messages = append(msg.Messages, parseMessage(p))
 		case token.Option:
-			def.Options = append(def.Options, parseOption(p))
+			msg.Options = append(msg.Options, parseOption(p))
 		case token.Oneof:
-			def.OneOfs = append(def.OneOfs, parseOneOf(p))
+			msg.OneOfs = append(msg.OneOfs, parseOneOf(p))
 		case token.Map:
-			def.Maps = append(def.Maps, parseMap(p))
+			msg.Maps = append(msg.Maps, parseMap(p))
 		case token.Reserved:
-			def.Reserveds = append(def.Reserveds, parseReserved(p))
+			msg.Reserveds = append(msg.Reserveds, parseReserved(p))
 		case token.Semicolon:
 			p.scan()
 		case token.Identifier, token.Repeated:
-			def.Fields = append(def.Fields, parseField(p))
+			msg.Fields = append(msg.Fields, parseField(p))
 		default:
 			if !token.IsType(next.Kind) {
 				panicf("expected '}' to end message definition, got %s", next)
 			}
-			def.Fields = append(def.Fields, parseField(p))
+			msg.Fields = append(msg.Fields, parseField(p))
 		}
 	}
 }
