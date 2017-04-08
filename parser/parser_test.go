@@ -101,10 +101,10 @@ func TestParseProto(t *testing.T) {
 				}},
 				Options: []Option{{
 					Name:  ptrFullIdentifier("java_package"),
-					Value: Constant{make(token.StringLiteral, `"com.example.foo"`)},
+					Value: make(token.StringLiteral, `"com.example.foo"`),
 				}, {
 					Name:  ptrFullIdentifier("go_package"),
-					Value: Constant{make(token.StringLiteral, `"foo"`)},
+					Value: make(token.StringLiteral, `"foo"`),
 				}},
 				Messages: []Message{
 					{
@@ -196,7 +196,7 @@ func TestParseProto(t *testing.T) {
 						Options: []Option{
 							{
 								Name:  ptrFullIdentifier("allow_alias"),
-								Value: Constant{make(token.True, "")},
+								Value: make(token.True, ""),
 							},
 						},
 					},
@@ -335,28 +335,28 @@ func TestParseOption(t *testing.T) {
 		{name: "good syntax string", in: `option java_package = "com.example.foo";`,
 			out: Option{
 				Name:  ptrFullIdentifier("java_package"),
-				Value: Constant{make(token.StringLiteral, `"com.example.foo"`)},
+				Value: make(token.StringLiteral, `"com.example.foo"`),
 			},
 		},
 		{name: "good syntax full identifer", in: `option java_package = foo.bar;`,
 			out: Option{
 				Name:  ptrFullIdentifier("java_package"),
-				Value: Constant{fullIdentifier("foo", "bar")},
+				Value: fullIdentifier("foo", "bar"),
 			},
 		},
 		{name: "good syntax integer", in: `option options.number = 42;`,
 			out: Option{
 				Name:  ptrFullIdentifier("options", "number"),
-				Value: Constant{make(token.DecimalLiteral, "42")},
+				Value: make(token.DecimalLiteral, "42"),
 			},
 		},
 		{name: "good syntax signed float", in: `option java_package = -10.5;`,
 			out: Option{
 				Name: ptrFullIdentifier("java_package"),
-				Value: Constant{SignedNumber{
+				Value: SignedNumber{
 					Sign:   make(token.Minus, ""),
 					Number: make(token.FloatLiteral, "10.5"),
-				}},
+				},
 			},
 		},
 		{name: "bad syntax", in: `option java_package = syntax;`,
@@ -435,7 +435,7 @@ func TestParseMessage(t *testing.T) {
 					Number:   make(token.DecimalLiteral, "1"),
 					Options: []Option{{
 						Name:  ptrFullIdentifier("packed"),
-						Value: Constant{make(token.True, "")},
+						Value: make(token.True, ""),
 					}},
 				}},
 			},
@@ -453,10 +453,10 @@ func TestParseMessage(t *testing.T) {
 					Number:   make(token.DecimalLiteral, "1"),
 					Options: []Option{{
 						Name:  ptrFullIdentifier("packed"),
-						Value: Constant{make(token.True, "")},
+						Value: make(token.True, ""),
 					}, {
 						Name:  ptrFullIdentifier("json"),
-						Value: Constant{make(token.StringLiteral, `"-"`)},
+						Value: make(token.StringLiteral, `"-"`),
 					}},
 				}},
 			},
@@ -477,7 +477,7 @@ func TestParseMessage(t *testing.T) {
 					Options: []Option{
 						{
 							Name:  ptrFullIdentifier("allow_alias"),
-							Value: Constant{make(token.True, "")},
+							Value: make(token.True, ""),
 						},
 					},
 					Fields: []EnumField{
@@ -492,7 +492,7 @@ func TestParseMessage(t *testing.T) {
 							Number: make(token.DecimalLiteral, "2"),
 							Options: []Option{{
 								Prefix: ptrFullIdentifier("custom_option"),
-								Value:  Constant{make(token.StringLiteral, `"hello world"`)},
+								Value:  make(token.StringLiteral, `"hello world"`),
 							}},
 						},
 					},
@@ -627,7 +627,7 @@ func TestParseService(t *testing.T) {
 					Out:  RPCParam{Type: fullIdentifier("SearchResponse"), Stream: true},
 					Options: []Option{{
 						Name:  ptrFullIdentifier("secured"),
-						Value: Constant{make(token.False, "")},
+						Value: make(token.False, ""),
 					}},
 				}},
 			},

@@ -122,7 +122,7 @@ func parsePackage(p *peeker) Package {
 type Option struct {
 	Prefix *FullIdentifier
 	Name   *FullIdentifier
-	Value  Constant
+	Value  interface{}
 }
 
 func parseOption(p *peeker) Option {
@@ -153,7 +153,7 @@ func parseShortOption(p *peeker) Option {
 	}
 
 	p.consume(token.Equals)
-	opt.Value.parse(p)
+	opt.Value = parseConstant(p)
 	return opt
 }
 
@@ -458,30 +458,27 @@ func parseFullIdentifier(p *peeker) FullIdentifier {
 
 }
 
-type Constant struct {
-	Value interface{}
-}
-
 type SignedNumber struct {
 	Sign, Number scanner.Token
 }
 
-func (c *Constant) parse(p *peeker) {
+func parseConstant(p *peeker) interface{} {
 	switch next := p.peek(); {
 	case token.IsConstant(next.Kind):
-		c.Value = p.scan()
+		return p.scan()
 	case next.Kind == token.Plus || next.Kind == token.Minus:
 		p.scan()
 		number := p.scan()
 		if !token.IsNumber(number.Kind) {
 			panicf("expected number after %v, got %v", next.Kind, number.Kind)
 		}
-		c.Value = SignedNumber{next, number}
+		return SignedNumber{next, number}
 	case next.Kind == token.Identifier:
-		c.Value = parseFullIdentifier(p)
+		return parseFullIdentifier(p)
 	default:
 		panicf("expected a valid constant value, but got %s", next)
 	}
+	panic("unreachable")
 }
 
 func panicf(format string, args ...interface{}) { panic(fmt.Sprintf(format, args...)) }
