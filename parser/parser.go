@@ -18,8 +18,6 @@ import (
 	"io"
 	"strings"
 
-	"bytes"
-
 	"github.com/campoy/groto/scanner"
 	"github.com/campoy/groto/token"
 )
@@ -38,6 +36,7 @@ func Parse(r io.Reader) (*Proto, error) {
 	return parseProto(&peeker{s: scanner.New(r)})
 }
 
+// proto = syntax { import | package | option |  message | enum | service | emptyStatement }
 func parseProto(p *peeker) (proto *Proto, err error) {
 	defer func() {
 		if rec := recover(); rec != nil {
@@ -45,19 +44,13 @@ func parseProto(p *peeker) (proto *Proto, err error) {
 		}
 	}()
 
-	proto = new(Proto)
+	proto = &Proto{Syntax: parseSyntax(p)}
 	for {
 		switch next := p.peek(); next.Kind {
-		case token.Illegal:
-			panicf("unexpected %s", next.Text)
-		case token.EOF:
-			return proto, nil
-		case token.Semicolon, token.Comment:
-			// we ignore comments and empty statements for now
-			continue
-		case token.Syntax:
-			proto.Syntax = parseSyntax(p)
 		case token.Package:
+			if len(proto.Package.Identifier) > 0 {
+				panicf("found second package definition")
+			}
 			proto.Package = parsePackage(p)
 		case token.Import:
 			proto.Imports = append(proto.Imports, parseImport(p))
@@ -69,18 +62,20 @@ func parseProto(p *peeker) (proto *Proto, err error) {
 			proto.Enums = append(proto.Enums, parseEnum(p))
 		case token.Service:
 			proto.Services = append(proto.Services, parseService(p))
+		case token.Semicolon, token.Comment:
+			// we ignore comments and empty statements
+			continue
+		case token.EOF:
+			return proto, nil
 		default:
-			buf := new(bytes.Buffer)
-			for p.peek().Kind != token.EOF {
-				fmt.Fprintln(buf, p.scan())
-			}
-			panicf("unexpected %s at top level definition, right before %s", next, buf)
+			panicf("unexpected %s at top level definition", next)
 		}
 	}
 }
 
 type Syntax struct{ Value scanner.Token }
 
+// syntax = "syntax" "=" quote "proto3" quote ";"
 func parseSyntax(p *peeker) Syntax {
 	p.consume(token.Syntax)
 	p.consume(token.Equals)
@@ -97,6 +92,7 @@ type Import struct {
 	Path     scanner.Token
 }
 
+// import = "import" [ "weak" | "public" ] strLit ";"
 func parseImport(p *peeker) Import {
 	p.consume(token.Import)
 	var mod scanner.Token
@@ -112,6 +108,7 @@ type Package struct {
 	Identifier FullIdentifier
 }
 
+// package = "package" fullIdent ";"
 func parsePackage(p *peeker) Package {
 	p.consume(token.Package)
 	ident := parseFullIdentifier(p)
@@ -120,32 +117,30 @@ func parsePackage(p *peeker) Package {
 }
 
 type Option struct {
-	Prefix *FullIdentifier
-	Name   *FullIdentifier
+	Prefix FullIdentifier // Parenthesised part of the identifier, if any.
+	Name   FullIdentifier
 	Value  interface{}
 }
 
+// option = "option" optionName  "=" constant ";"
+// optionName = ( ident | "(" fullIdent ")" ) { "." ident }
 func parseOption(p *peeker) Option {
 	p.consume(token.Option)
-	opt := parseShortOption(p)
+	opt := parseFieldOption(p)
 	p.consume(token.Semicolon)
 	return opt
 }
 
-type shortOption Option
-
-func parseShortOption(p *peeker) Option {
+// fieldOption = optionName "=" constant
+func parseFieldOption(p *peeker) Option {
 	var opt Option
-	if p.peek().Kind == token.OpenParens {
-		p.scan()
-		ident := parseFullIdentifier(p)
-		opt.Prefix = &ident
+	if _, ok := p.maybeConsume(token.OpenParens); ok {
+		opt.Prefix = parseFullIdentifier(p)
 		p.consume(token.CloseParens)
 	}
 
 	if p.peek().Kind == token.Identifier {
-		ident := parseFullIdentifier(p)
-		opt.Name = &ident
+		opt.Name = parseFullIdentifier(p)
 	}
 
 	if opt.Prefix == nil && opt.Name == nil {
@@ -157,17 +152,16 @@ func parseShortOption(p *peeker) Option {
 	return opt
 }
 
-func parseOptionList(p *peeker) []Option {
-	if p.peek().Kind != token.OpenBrackets {
+// fieldOptions = [ "[" fieldOption { ","  fieldOption } "]" ]
+func parseFieldOptions(p *peeker) []Option {
+	if _, ok := p.maybeConsume(token.OpenBrackets); !ok {
 		return nil
 	}
-	p.scan()
 
 	var opts []Option
 	for {
-		opts = append(opts, parseShortOption(p))
-		if p.peek().Kind == token.CloseBracket {
-			p.scan()
+		opts = append(opts, parseFieldOption(p))
+		if _, ok := p.maybeConsume(token.CloseBracket); ok {
 			return opts
 		}
 		p.consume(token.Comma)
@@ -185,37 +179,36 @@ type Message struct {
 	Reserveds []Reserved
 }
 
+// message = "message" messageName messageBody
+// messageBody = "{" { field | enum | message | option | oneof | mapField | reserved | emptyStatement } "}"
 func parseMessage(p *peeker) Message {
 	p.consume(token.Message)
 	msg := Message{Name: p.consume(token.Identifier)}
 	p.consume(token.OpenBraces)
 
 	for {
-		switch next := p.peek(); next.Kind {
-		case token.CloseBraces:
+		switch kind := p.peek().Kind; {
+		case token.IsType(kind) || kind == token.Identifier || kind == token.Repeated:
+			msg.Fields = append(msg.Fields, parseField(p))
+		case kind == token.Enum:
+			msg.Enums = append(msg.Enums, parseEnum(p))
+		case kind == token.Message:
+			msg.Messages = append(msg.Messages, parseMessage(p))
+		case kind == token.Option:
+			msg.Options = append(msg.Options, parseOption(p))
+		case kind == token.Oneof:
+			msg.OneOfs = append(msg.OneOfs, parseOneOf(p))
+		case kind == token.Map:
+			msg.Maps = append(msg.Maps, parseMap(p))
+		case kind == token.Reserved:
+			msg.Reserveds = append(msg.Reserveds, parseReserved(p))
+		case kind == token.Semicolon:
+			p.scan()
+		case kind == token.CloseBraces:
 			p.scan()
 			return msg
-		case token.Enum:
-			msg.Enums = append(msg.Enums, parseEnum(p))
-		case token.Message:
-			msg.Messages = append(msg.Messages, parseMessage(p))
-		case token.Option:
-			msg.Options = append(msg.Options, parseOption(p))
-		case token.Oneof:
-			msg.OneOfs = append(msg.OneOfs, parseOneOf(p))
-		case token.Map:
-			msg.Maps = append(msg.Maps, parseMap(p))
-		case token.Reserved:
-			msg.Reserveds = append(msg.Reserveds, parseReserved(p))
-		case token.Semicolon:
-			p.scan()
-		case token.Identifier, token.Repeated:
-			msg.Fields = append(msg.Fields, parseField(p))
 		default:
-			if !token.IsType(next.Kind) {
-				panicf("expected '}' to end message definition, got %s", next)
-			}
-			msg.Fields = append(msg.Fields, parseField(p))
+			panicf("expected '}' to end message definition, got %s", p.scan())
 		}
 	}
 }
@@ -228,19 +221,11 @@ type Field struct {
 	Options  []Option
 }
 
+// field = [ "repeated" ] type fieldName "=" fieldNumber [ "[" fieldOptions "]" ] ";"
 func parseField(p *peeker) Field {
 	_, repeated := p.maybeConsume(token.Repeated)
-	typ := p.scan()
-	if typ.Kind != token.Identifier && !token.IsType(typ.Kind) {
-		panicf("expected field type, got %s", typ)
-	}
-	name := p.consume(token.Identifier)
-	p.consume(token.Equals)
-	number := p.consume(token.DecimalLiteral)
-	opts := parseOptionList(p)
-	p.consume(token.Semicolon)
-
-	return Field{Repeated: repeated, Type: typ, Name: name, Number: number, Options: opts}
+	f := parseOneOfField(p)
+	return Field{Repeated: repeated, Type: f.Type, Name: f.Name, Number: f.Number, Options: f.Options}
 }
 
 type Enum struct {
@@ -249,25 +234,23 @@ type Enum struct {
 	Options []Option
 }
 
+// enum = "enum" enumName "{" { option | enumField | emptyStatement } "}"
 func parseEnum(p *peeker) Enum {
 	p.consume(token.Enum)
 	enum := Enum{Name: p.consume(token.Identifier)}
 	p.consume(token.OpenBraces)
 
 	for {
-		switch next := p.peek(); next.Kind {
-		case token.CloseBraces:
+		switch kind := p.peek().Kind; {
+		case token.IsType(kind) || kind == token.Identifier || kind == token.Repeated:
+			enum.Fields = append(enum.Fields, parseEnumField(p))
+		case kind == token.Option:
+			enum.Options = append(enum.Options, parseOption(p))
+		case kind == token.CloseBraces:
 			p.scan()
 			return enum
-		case token.Option:
-			enum.Options = append(enum.Options, parseOption(p))
-		case token.Identifier, token.Repeated:
-			enum.Fields = append(enum.Fields, parseEnumField(p))
 		default:
-			if !token.IsType(next.Kind) {
-				panicf("expected '}' to end message definition, got %s", next)
-			}
-			enum.Fields = append(enum.Fields, parseEnumField(p))
+			panicf("expected '}' to end message definition, got %s", p.scan())
 		}
 	}
 }
@@ -278,11 +261,12 @@ type EnumField struct {
 	Options []Option
 }
 
+// enumField = ident "=" intLit fieldOptions ";"
 func parseEnumField(p *peeker) EnumField {
 	name := p.consume(token.Identifier)
 	p.consume(token.Equals)
 	number := p.consume(token.DecimalLiteral)
-	opts := parseOptionList(p)
+	opts := parseFieldOptions(p)
 	p.consume(token.Semicolon)
 
 	return EnumField{Name: name, Number: number, Options: opts}
@@ -290,9 +274,10 @@ func parseEnumField(p *peeker) EnumField {
 
 type OneOf struct {
 	Name   scanner.Token
-	Fields []Field
+	Fields []OneOfField
 }
 
+// oneof = "oneof" oneofName "{" { oneofField | emptyStatement } "}"
 func parseOneOf(p *peeker) OneOf {
 	p.consume(token.Oneof)
 	o := OneOf{Name: p.consume(token.Identifier)}
@@ -302,22 +287,41 @@ func parseOneOf(p *peeker) OneOf {
 		if _, ok := p.maybeConsume(token.CloseBraces); ok {
 			return o
 		}
-		f := parseField(p)
-		if f.Repeated {
-			panicf("required field %s not allowed inside of oneof", f.Name.Text)
-		}
-		o.Fields = append(o.Fields, f)
+		o.Fields = append(o.Fields, parseOneOfField(p))
 	}
+}
+
+type OneOfField struct {
+	Type    scanner.Token
+	Name    scanner.Token
+	Number  scanner.Token
+	Options []Option
+}
+
+// oneofField = type fieldName "=" fieldNumber [ "[" fieldOptions "]" ] ";"
+func parseOneOfField(p *peeker) OneOfField {
+	typ := p.scan()
+	if typ.Kind != token.Identifier && !token.IsType(typ.Kind) {
+		panicf("expected field type, got %s", typ)
+	}
+	name := p.consume(token.Identifier)
+	p.consume(token.Equals)
+	number := p.consume(token.DecimalLiteral)
+	opts := parseFieldOptions(p)
+	p.consume(token.Semicolon)
+
+	return OneOfField{Type: typ, Name: name, Number: number, Options: opts}
 }
 
 type Map struct {
 	KeyType   scanner.Token
-	ValueType FullIdentifier
+	ValueType Type
 	Name      scanner.Token
 	Number    scanner.Token
 	Options   []Option
 }
 
+// mapField = "map" "<" keyType "," type ">" mapName "=" fieldNumber [ "[" fieldOptions "]" ] ";"
 func parseMap(p *peeker) Map {
 	p.consume(token.Map)
 	p.consume(token.OpenAngled)
@@ -326,15 +330,32 @@ func parseMap(p *peeker) Map {
 		panicf("expected key type, got %s", key)
 	}
 	p.consume(token.Comma)
-	value := parseFullIdentifier(p)
+	value := parseType(p)
 	p.consume(token.CloseAngled)
 	name := p.consume(token.Identifier)
 	p.consume(token.Equals)
 	number := p.consume(token.DecimalLiteral)
-	opts := parseOptionList(p)
+	opts := parseFieldOptions(p)
 	p.consume(token.Semicolon)
 
 	return Map{KeyType: key, ValueType: value, Name: name, Number: number, Options: opts}
+}
+
+// Type contains either a predefined type in the form a Token,
+// or a full identifier.
+type Type struct {
+	Predefined  scanner.Token
+	UserDefined FullIdentifier
+}
+
+// type = "double" | "float" | "int32" | "int64" | "uint32" | "uint64"
+//       | "sint32" | "sint64" | "fixed32" | "fixed64" | "sfixed32" | "sfixed64"
+//       | "bool" | "string" | "bytes" | messageType | enumType
+func parseType(p *peeker) Type {
+	if token.IsType(p.peek().Kind) {
+		return Type{Predefined: p.scan()}
+	}
+	return Type{UserDefined: parseFullIdentifier(p)}
 }
 
 type Reserved struct {
@@ -343,10 +364,10 @@ type Reserved struct {
 	Ranges []Range
 }
 
-type Range struct {
-	From, To scanner.Token
-}
+type Range struct{ From, To scanner.Token }
 
+// reserved = "reserved" ( ranges | fieldNames ) ";"
+// fieldNames = fieldName { "," fieldName }
 func parseReserved(p *peeker) Reserved {
 	p.consume(token.Reserved)
 
@@ -365,13 +386,10 @@ func parseReserved(p *peeker) Reserved {
 				res.Names = append(res.Names, from)
 			}
 		}
-		if tok, ok := p.maybeConsume(token.Comma, token.Semicolon); !ok {
-			panicf("expected comma or semicolon in reserved list, got %s", tok)
-		} else {
-			if tok.Kind == token.Semicolon {
-				return res
-			}
+		if _, ok := p.maybeConsume(token.Semicolon); ok {
+			return res
 		}
+		p.consume(token.Comma)
 	}
 }
 
@@ -381,6 +399,7 @@ type Service struct {
 	RPCs    []RPC
 }
 
+// service = "service" serviceName "{" { option | rpc | emptyStatement } "}"
 func parseService(p *peeker) Service {
 	p.consume(token.Service)
 	svc := Service{Name: p.consume(token.Identifier)}
@@ -388,13 +407,13 @@ func parseService(p *peeker) Service {
 	p.consume(token.OpenBraces)
 	for {
 		switch p.peek().Kind {
-		case token.CloseBraces:
-			p.scan()
-			return svc
 		case token.Option:
 			svc.Options = append(svc.Options, parseOption(p))
 		case token.RPC:
 			svc.RPCs = append(svc.RPCs, parseRPC(p))
+		case token.CloseBraces:
+			p.scan()
+			return svc
 		default:
 			panicf("expected option or rpc in service, got %s", p.peek())
 		}
@@ -408,6 +427,7 @@ type RPC struct {
 	Options []Option
 }
 
+// rpc = "rpc" rpcName rpcParam "returns" rpcParam (( "{" {option | emptyStatement } "}" ) | ";")
 func parseRPC(p *peeker) RPC {
 	p.consume(token.RPC)
 	rpc := RPC{Name: p.consume(token.Identifier)}
@@ -433,6 +453,7 @@ type RPCParam struct {
 	Type   FullIdentifier
 }
 
+// rpcParam = "(" [ "stream" ] messageType ")"
 func parseRPCParam(p *peeker) RPCParam {
 	p.consume(token.OpenParens)
 	_, stream := p.maybeConsume(token.Stream)
@@ -441,21 +462,18 @@ func parseRPCParam(p *peeker) RPCParam {
 	return RPCParam{Stream: stream, Type: typ}
 }
 
-type FullIdentifier struct {
-	Identifiers []scanner.Token
-}
+type FullIdentifier []scanner.Token
 
 func parseFullIdentifier(p *peeker) FullIdentifier {
-	idents := []scanner.Token{p.consume(token.Identifier)}
+	ident := FullIdentifier{p.consume(token.Identifier)}
 	for {
 		dot := p.peek()
 		if dot.Kind != token.Dot {
-			return FullIdentifier{idents}
+			return ident
 		}
 		p.scan()
-		idents = append(idents, p.consume(token.Identifier))
+		ident = append(ident, p.consume(token.Identifier))
 	}
-
 }
 
 type SignedNumber struct {
