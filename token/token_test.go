@@ -90,11 +90,11 @@ const (
 )
 
 var funcs = map[predicate]func(Kind) bool{
-	isKeyword:  IsKeyword,
-	isConstant: IsConstant,
-	isNumber:   IsNumber,
-	isType:     IsType,
-	isKeyType:  IsKeyType,
+	isKeyword:  Kind.IsKeyword,
+	isConstant: Kind.IsConstant,
+	isNumber:   Kind.IsNumber,
+	isType:     Kind.IsType,
+	isKeyType:  Kind.IsKeyType,
 }
 
 func only(ps ...predicate) map[predicate]bool {

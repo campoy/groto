@@ -139,7 +139,7 @@ func parseFieldOption(p *peeker) Option {
 		p.consume(token.CloseParen)
 	}
 
-	if p.peek().Kind == token.Identifier {
+	if p.peek().Is(token.Identifier) {
 		opt.Name = parseFullIdentifier(p)
 	}
 
@@ -187,24 +187,24 @@ func parseMessage(p *peeker) Message {
 	p.consume(token.OpenBrace)
 
 	for {
-		switch kind := p.peek().Kind; {
-		case token.IsType(kind) || kind == token.Identifier || kind == token.Repeated:
+		switch next := p.peek(); {
+		case next.IsType() || next.Is(token.Identifier) || next.Is(token.Repeated):
 			msg.Fields = append(msg.Fields, parseField(p))
-		case kind == token.Enum:
+		case next.Is(token.Enum):
 			msg.Enums = append(msg.Enums, parseEnum(p))
-		case kind == token.Message:
+		case next.Is(token.Message):
 			msg.Messages = append(msg.Messages, parseMessage(p))
-		case kind == token.Option:
+		case next.Is(token.Option):
 			msg.Options = append(msg.Options, parseOption(p))
-		case kind == token.Oneof:
+		case next.Is(token.Oneof):
 			msg.OneOfs = append(msg.OneOfs, parseOneOf(p))
-		case kind == token.Map:
+		case next.Is(token.Map):
 			msg.Maps = append(msg.Maps, parseMap(p))
-		case kind == token.Reserved:
+		case next.Is(token.Reserved):
 			msg.Reserveds = append(msg.Reserveds, parseReserved(p))
-		case kind == token.Semicolon:
+		case next.Is(token.Semicolon):
 			p.scan()
-		case kind == token.CloseBrace:
+		case next.Is(token.CloseBrace):
 			p.scan()
 			return msg
 		default:
@@ -241,12 +241,12 @@ func parseEnum(p *peeker) Enum {
 	p.consume(token.OpenBrace)
 
 	for {
-		switch kind := p.peek().Kind; {
-		case token.IsType(kind) || kind == token.Identifier || kind == token.Repeated:
+		switch next := p.peek(); {
+		case next.IsType() || next.Is(token.Identifier) || next.Is(token.Repeated):
 			enum.Fields = append(enum.Fields, parseEnumField(p))
-		case kind == token.Option:
+		case next.Is(token.Option):
 			enum.Options = append(enum.Options, parseOption(p))
-		case kind == token.CloseBrace:
+		case next.Is(token.CloseBrace):
 			p.scan()
 			return enum
 		default:
@@ -301,7 +301,7 @@ type OneOfField struct {
 // oneofField = type fieldName "=" fieldNumber [ "[" fieldOptions "]" ] ";"
 func parseOneOfField(p *peeker) OneOfField {
 	typ := p.scan()
-	if typ.Kind != token.Identifier && !token.IsType(typ.Kind) {
+	if typ.Kind != token.Identifier && !typ.IsType() {
 		panicf("expected field type, got %s", typ)
 	}
 	name := p.consume(token.Identifier)
@@ -326,7 +326,7 @@ func parseMap(p *peeker) Map {
 	p.consume(token.Map)
 	p.consume(token.OpenAngled)
 	key := p.scan()
-	if !token.IsKeyType(key.Kind) {
+	if !key.IsKeyType() {
 		panicf("expected key type, got %s", key)
 	}
 	p.consume(token.Comma)
@@ -352,7 +352,7 @@ type Type struct {
 //       | "sint32" | "sint64" | "fixed32" | "fixed64" | "sfixed32" | "sfixed64"
 //       | "bool" | "string" | "bytes" | messageType | enumType
 func parseType(p *peeker) Type {
-	if token.IsType(p.peek().Kind) {
+	if p.peek().IsType() {
 		return Type{Predefined: p.scan()}
 	}
 	return Type{UserDefined: parseFullIdentifier(p)}
@@ -380,7 +380,7 @@ func parseReserved(p *peeker) Reserved {
 		if _, ok := p.maybeConsume(token.To); ok {
 			res.Ranges = append(res.Ranges, Range{from, p.consume(from.Kind)})
 		} else {
-			if from.Kind == token.DecimalLiteral {
+			if from.Is(token.DecimalLiteral) {
 				res.IDs = append(res.IDs, from)
 			} else {
 				res.Names = append(res.Names, from)
@@ -482,16 +482,16 @@ type SignedNumber struct {
 
 func parseConstant(p *peeker) interface{} {
 	switch next := p.peek(); {
-	case token.IsConstant(next.Kind):
+	case next.IsConstant():
 		return p.scan()
-	case next.Kind == token.Plus || next.Kind == token.Minus:
+	case next.Is(token.Plus) || next.Is(token.Minus):
 		p.scan()
 		number := p.scan()
-		if !token.IsNumber(number.Kind) {
+		if !number.IsNumber() {
 			panicf("expected number after %v, got %v", next.Kind, number.Kind)
 		}
 		return SignedNumber{next, number}
-	case next.Kind == token.Identifier:
+	case next.Is(token.Identifier):
 		return parseFullIdentifier(p)
 	default:
 		panicf("expected a valid constant value, but got %s", next)
@@ -512,7 +512,7 @@ func (p *peeker) scan() (res scanner.Token) {
 		return *tok
 	}
 	tok := p.s.Scan()
-	for tok.Kind == token.Comment {
+	for tok.Is(token.Comment) {
 		tok = p.s.Scan()
 	}
 	return tok
@@ -523,7 +523,7 @@ func (p *peeker) peek() (res scanner.Token) {
 		return *tok
 	}
 	tok := p.s.Scan()
-	for tok.Kind == token.Comment {
+	for tok.Is(token.Comment) {
 		tok = p.s.Scan()
 	}
 	p.peeked = &tok
@@ -534,7 +534,7 @@ func (p *peeker) peek() (res scanner.Token) {
 func (p *peeker) consume(toks ...token.Kind) scanner.Token {
 	got := p.scan()
 	for _, tok := range toks {
-		if got.Kind == tok {
+		if got.Is(tok) {
 			return got
 		}
 	}
@@ -550,7 +550,7 @@ func (p *peeker) consume(toks ...token.Kind) scanner.Token {
 func (p *peeker) maybeConsume(toks ...token.Kind) (scanner.Token, bool) {
 	got := p.peek()
 	for _, tok := range toks {
-		if got.Kind == tok {
+		if got.Is(tok) {
 			p.scan()
 			return got, true
 		}

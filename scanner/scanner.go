@@ -31,7 +31,7 @@ type Scanner struct {
 }
 
 type Token struct {
-	Kind token.Kind
+	token.Kind
 	Text string
 }
 
@@ -41,6 +41,8 @@ func (t Token) String() string {
 	}
 	return fmt.Sprintf("%s (%s)", t.Kind, t.Text)
 }
+
+func (t Token) Is(kind token.Kind) bool { return t.Kind == kind }
 
 func (s *Scanner) emit(kind token.Kind, value []rune) Token {
 	return Token{Kind: kind, Text: string(value)}
