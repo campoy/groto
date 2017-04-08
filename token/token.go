@@ -11,6 +11,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Package token defines all the token kinds defined in the Protocol Buffers language version 3.
+//
+// You can find the specification of the language in https://developers.google.com/protocol-buffers/docs/reference/proto3-spec.
 package token
 
 import (
@@ -18,6 +21,7 @@ import (
 	"strings"
 )
 
+// Kind identifies all possible token kinds.
 type Kind int
 
 const (
@@ -118,15 +122,32 @@ var (
 	}
 )
 
-func Keyword(s string) Kind     { return keywords[s] }
-func Type(s string) Kind        { return types[s] }
+// Keyword returns the Kind corresponding to the given text if it's a keyword.
+// Otherwise it returns Illegal.
+func Keyword(s string) Kind { return keywords[s] }
+
+// Type returns the Kind corresponding to the given text if it's a type.
+// Otherwise it returns Illegal.
+func Type(s string) Kind { return types[s] }
+
+// Type returns the Kind corresponding to the given text if it's a piece of punctuation.
+// Otherwise it returns Illegal.
 func Punctuation(s string) Kind { return punctuation[s] }
 
-func IsKeyword(k Kind) bool  { return k > first_keyword && k < last_keyword }
+// IsKeyword returns true only if the given Kind is a keyword.
+func IsKeyword(k Kind) bool { return k > first_keyword && k < last_keyword }
+
+// IsConstant returns true only if the given Kind is a constant.
 func IsConstant(k Kind) bool { return k > first_constant && k < last_constant }
-func IsNumber(k Kind) bool   { return k > first_number && k < last_number }
-func IsType(k Kind) bool     { return k > first_type && k < last_type }
-func IsKeyType(k Kind) bool  { return k > first_key_type && k < last_type }
+
+// IsNumber returns true only if the given Kind is a number.
+func IsNumber(k Kind) bool { return k > first_number && k < last_number }
+
+// IsType returns true only if the given Kind is a type.
+func IsType(k Kind) bool { return k > first_type && k < last_type }
+
+// IsKeyType returns true only if the given Kind is a valid map key type.
+func IsKeyType(k Kind) bool { return k > first_key_type && k < last_type }
 
 func from(a, b Kind) map[string]Kind {
 	m := make(map[string]Kind, b-a-1)
