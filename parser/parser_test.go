@@ -610,6 +610,60 @@ func TestParseMessage(t *testing.T) {
 	}
 }
 
+func TestParseService(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		out  Service
+		err  error
+	}{
+		{name: "good syntax string", in: `
+				service SearchService {
+					rpc Search (SearchRequest) returns (stream SearchResponse);
+				}`,
+			out: Service{
+				Name: make(token.Identifier, "SearchService"),
+				RPCs: []RPC{{
+					Name: make(token.Identifier, "Search"),
+					In:   RPCParam{Type: fullIdentifier("SearchRequest")},
+					Out:  RPCParam{Type: fullIdentifier("SearchResponse"), Stream: true},
+				}},
+			},
+		},
+		{name: "good syntax string", in: `
+				service SearchService {
+					rpc Search (SearchRequest) returns (stream SearchResponse) {
+						option secured = false;
+					}
+				}`,
+			out: Service{
+				Name: make(token.Identifier, "SearchService"),
+				RPCs: []RPC{{
+					Name: make(token.Identifier, "Search"),
+					In:   RPCParam{Type: fullIdentifier("SearchRequest")},
+					Out:  RPCParam{Type: fullIdentifier("SearchResponse"), Stream: true},
+					Options: []Option{{
+						Name:  ptrFullIdentifier("secured"),
+						Value: Constant{make(token.False, "")},
+					}},
+				}},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := &peeker{s: scanner.New(strings.NewReader(tt.in))}
+			var svc Service
+			err := panicToErr(func() { svc = parseService(p) })
+			if !checkErrors(t, tt.err, err) {
+				return
+			}
+			checkResults(t, tt.out, svc)
+		})
+	}
+}
+
 func checkErrors(t *testing.T, want, got error) bool {
 	switch {
 	case want == nil && got == nil:

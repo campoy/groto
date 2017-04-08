@@ -18,6 +18,7 @@ type Proto struct {
 	Options  []Option
 	Messages []Message
 	Enums    []Enum
+	Services []Service
 }
 
 func Parse(r io.Reader) (*Proto, error) {
@@ -53,6 +54,8 @@ func parseProto(p *peeker) (proto *Proto, err error) {
 			proto.Messages = append(proto.Messages, parseMessage(p))
 		case token.Enum:
 			proto.Enums = append(proto.Enums, parseEnum(p))
+		case token.Service:
+			proto.Services = append(proto.Services, parseService(p))
 		default:
 			buf := new(bytes.Buffer)
 			for p.peek().Kind != token.EOF {
@@ -379,6 +382,72 @@ func parseReserved(p *peeker) Reserved {
 			}
 		}
 	}
+}
+
+type Service struct {
+	Name    scanner.Token
+	Options []Option
+	RPCs    []RPC
+}
+
+func parseService(p *peeker) Service {
+	p.consume(token.Service)
+	svc := Service{Name: p.consume(token.Identifier)}
+
+	p.consume(token.OpenBraces)
+	for {
+		switch p.peek().Kind {
+		case token.CloseBraces:
+			p.scan()
+			return svc
+		case token.Option:
+			svc.Options = append(svc.Options, parseOption(p))
+		case token.RPC:
+			svc.RPCs = append(svc.RPCs, parseRPC(p))
+		default:
+			panicf("expected option or rpc in service, got %s", p.peek())
+		}
+	}
+}
+
+type RPC struct {
+	Name    scanner.Token
+	In      RPCParam
+	Out     RPCParam
+	Options []Option
+}
+
+func parseRPC(p *peeker) RPC {
+	p.consume(token.RPC)
+	rpc := RPC{Name: p.consume(token.Identifier)}
+	rpc.In = parseRPCParam(p)
+	p.consume(token.Returns)
+	rpc.Out = parseRPCParam(p)
+
+	if _, ok := p.maybeConsume(token.Semicolon); ok {
+		return rpc
+	}
+
+	p.consume(token.OpenBraces)
+	for {
+		if _, ok := p.maybeConsume(token.CloseBraces); ok {
+			return rpc
+		}
+		rpc.Options = append(rpc.Options, parseOption(p))
+	}
+}
+
+type RPCParam struct {
+	Stream bool
+	Type   FullIdentifier
+}
+
+func parseRPCParam(p *peeker) RPCParam {
+	p.consume(token.OpenParens)
+	_, stream := p.maybeConsume(token.Stream)
+	typ := parseFullIdentifier(p)
+	p.consume(token.CloseParens)
+	return RPCParam{Stream: stream, Type: typ}
 }
 
 type FullIdentifier struct {
