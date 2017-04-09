@@ -22,100 +22,80 @@ package parser
 import (
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
+	. "github.com/campoy/groto/proto"
 	"github.com/campoy/groto/scanner"
 	"github.com/campoy/groto/token"
 )
 
-// A Proto contains all the information that one can define in a .proto file.
-type Proto struct {
-	Syntax   Syntax
-	Package  Package
-	Imports  []Import
-	Options  []Option
-	Messages []Message
-	Enums    []Enum
-	Services []Service
-}
-
 // Parse reads from the given io.Reader and returns the parsed information in
 // a Proto value, or an error if the contents where not parseable.
-func Parse(r io.Reader) (*Proto, error) {
+func Parse(r io.Reader) (*File, error) {
 	return parseProto(&peeker{s: scanner.New(r)})
 }
 
 // proto = syntax { import | package | option |  message | enum | service | emptyStatement }
-func parseProto(p *peeker) (proto *Proto, err error) {
+func parseProto(p *peeker) (file *File, err error) {
 	defer func() {
 		if rec := recover(); rec != nil {
 			err = fmt.Errorf("%v", rec)
 		}
 	}()
 
-	proto = &Proto{Syntax: parseSyntax(p)}
+	file = &File{Syntax: parseSyntax(p)}
 	for {
 		switch next := p.peek(); next.Kind {
 		case token.Package:
-			if len(proto.Package.Identifier) > 0 {
+			if len(file.Package.Identifier) > 0 {
 				panicf("found second package definition")
 			}
-			proto.Package = parsePackage(p)
+			file.Package = parsePackage(p)
 		case token.Import:
-			proto.Imports = append(proto.Imports, parseImport(p))
+			file.Imports = append(file.Imports, parseImport(p))
 		case token.Option:
-			proto.Options = append(proto.Options, parseOption(p))
+			file.Options = append(file.Options, parseOption(p))
 		case token.Message:
-			proto.Messages = append(proto.Messages, parseMessage(p))
+			file.Messages = append(file.Messages, parseMessage(p))
 		case token.Enum:
-			proto.Enums = append(proto.Enums, parseEnum(p))
+			file.Enums = append(file.Enums, parseEnum(p))
 		case token.Service:
-			proto.Services = append(proto.Services, parseService(p))
+			file.Services = append(file.Services, parseService(p))
 		case token.EOF:
-			return proto, nil
+			return file, nil
 		default:
 			panicf("unexpected %s at top level definition", next)
 		}
 	}
 }
 
-// Syntax defines the protobuf version, it is always "proto3".
-type Syntax struct{ Value scanner.Token }
-
 // syntax = "syntax" "=" quote "proto3" quote ";"
 func parseSyntax(p *peeker) Syntax {
 	p.consume(token.Syntax)
 	p.consume(token.Equals)
-	value := p.consume(token.StringLiteral)
-	if text := value.Text; text != `"proto3"` && text != `'proto3'` {
-		panicf("expected literal string \"proto3\", got %s instead", text)
+	value := unquote(p.consume(token.StringLiteral))
+	if value != "proto3" {
+		panicf("expected literal string proto3, got %s instead", value)
 	}
 	p.consume(token.Semicolon)
-	return Syntax{value}
-}
-
-// An Import statement is used to import definitions from other files.
-// The Modifier can be either token.Weak or token.Public.
-type Import struct {
-	Modifier scanner.Token
-	Path     scanner.Token
+	return Syntax{Value: value}
 }
 
 // import = "import" [ "weak" | "public" ] strLit ";"
 func parseImport(p *peeker) Import {
 	p.consume(token.Import)
-	var mod scanner.Token
+	var mod ImportModifier
 	if tok, ok := p.maybeConsume(token.Weak, token.Public); ok {
-		mod = tok
+		if tok.Is(token.Weak) {
+			mod = WeakImport
+		} else {
+			mod = PublicImport
+		}
 	}
-	path := p.consume(token.StringLiteral)
+	path := unquote(p.consume(token.StringLiteral))
 	p.consume(token.Semicolon)
 	return Import{Modifier: mod, Path: path}
-}
-
-// A Package statement can be used to prevent name clashes between protocol message types.
-type Package struct {
-	Identifier FullIdentifier
 }
 
 // package = "package" fullIdent ";"
@@ -123,17 +103,7 @@ func parsePackage(p *peeker) Package {
 	p.consume(token.Package)
 	ident := parseFullIdentifier(p)
 	p.consume(token.Semicolon)
-	return Package{ident}
-}
-
-// An Option can be used in proto files, messages, enums and services.
-// An option can be a protobuf defined option or a custom option.
-// For more information, see Options in the language guide.
-// https://developers.google.com/protocol-buffers/docs/proto3#options
-type Option struct {
-	Prefix FullIdentifier // Parenthesised part of the identifier, if any.
-	Name   FullIdentifier
-	Value  interface{}
+	return Package{Identifier: ident}
 }
 
 // option = "option" optionName  "=" constant ";"
@@ -162,7 +132,7 @@ func parseFieldOption(p *peeker) Option {
 	}
 
 	p.consume(token.Equals)
-	opt.Value = parseConstant(p)
+	opt.Value = parseValue(p, false)
 	return opt
 }
 
@@ -182,26 +152,11 @@ func parseFieldOptions(p *peeker) []Option {
 	}
 }
 
-// A Message consists of a message name and a message body.
-// The message body can have fields, nested enum definitions,
-// nested message definitions, options, oneofs, map fields,
-// and reserved statements.
-type Message struct {
-	Name      scanner.Token
-	Fields    []Field
-	Enums     []Enum
-	Messages  []Message
-	Options   []Option
-	OneOfs    []OneOf
-	Maps      []Map
-	Reserveds []Reserved
-}
-
 // message = "message" messageName messageBody
 // messageBody = "{" { field | enum | message | option | oneof | mapField | reserved | emptyStatement } "}"
 func parseMessage(p *peeker) Message {
 	p.consume(token.Message)
-	msg := Message{Name: p.consume(token.Identifier)}
+	msg := Message{Name: identifier(p.consume(token.Identifier))}
 	p.consume(token.OpenBrace)
 
 	for {
@@ -231,15 +186,6 @@ func parseMessage(p *peeker) Message {
 	}
 }
 
-// Fields are the basic elements of a protocol buffer message.
-type Field struct {
-	Repeated bool
-	Type     Type
-	Name     scanner.Token
-	Number   scanner.Token
-	Options  []Option
-}
-
 // field = [ "repeated" ] type fieldName "=" fieldNumber [ "[" fieldOptions "]" ] ";"
 func parseField(p *peeker) Field {
 	_, repeated := p.maybeConsume(token.Repeated)
@@ -247,18 +193,10 @@ func parseField(p *peeker) Field {
 	return Field{Repeated: repeated, Type: f.Type, Name: f.Name, Number: f.Number, Options: f.Options}
 }
 
-// An Enum consists of a name and an enum body.
-// The enum body can have options and enum fields.
-type Enum struct {
-	Name    scanner.Token
-	Fields  []EnumField
-	Options []Option
-}
-
 // enum = "enum" enumName "{" { option | enumField | emptyStatement } "}"
 func parseEnum(p *peeker) Enum {
 	p.consume(token.Enum)
-	enum := Enum{Name: p.consume(token.Identifier)}
+	enum := Enum{Name: identifier(p.consume(token.Identifier))}
 	p.consume(token.OpenBrace)
 
 	for {
@@ -276,35 +214,21 @@ func parseEnum(p *peeker) Enum {
 	}
 }
 
-// An EnumField is one of the values defined in an Enum.
-type EnumField struct {
-	Name    scanner.Token
-	Number  scanner.Token
-	Options []Option
-}
-
 // enumField = ident "=" intLit fieldOptions ";"
 func parseEnumField(p *peeker) EnumField {
-	name := p.consume(token.Identifier)
+	name := identifier(p.consume(token.Identifier))
 	p.consume(token.Equals)
-	number := p.consume(token.DecimalLiteral)
+	number := atoi(p.consume(token.DecimalLiteral))
 	opts := parseFieldOptions(p)
 	p.consume(token.Semicolon)
 
 	return EnumField{Name: name, Number: number, Options: opts}
 }
 
-// A OneOf provides a way to define when only one of a set of fields
-// can be set at any time.
-type OneOf struct {
-	Name   scanner.Token
-	Fields []OneOfField
-}
-
 // oneof = "oneof" oneofName "{" { oneofField | emptyStatement } "}"
 func parseOneOf(p *peeker) OneOf {
 	p.consume(token.Oneof)
-	o := OneOf{Name: p.consume(token.Identifier)}
+	o := OneOf{Name: identifier(p.consume(token.Identifier))}
 	p.consume(token.OpenBrace)
 
 	for {
@@ -315,34 +239,16 @@ func parseOneOf(p *peeker) OneOf {
 	}
 }
 
-// A OneOfField is one of the possible fields in a OneOf statement.
-type OneOfField struct {
-	Type    Type
-	Name    scanner.Token
-	Number  scanner.Token
-	Options []Option
-}
-
 // oneofField = type fieldName "=" fieldNumber [ "[" fieldOptions "]" ] ";"
 func parseOneOfField(p *peeker) OneOfField {
 	typ := parseType(p)
-	name := p.consume(token.Identifier)
+	name := identifier(p.consume(token.Identifier))
 	p.consume(token.Equals)
-	number := p.consume(token.DecimalLiteral)
+	number := atoi(p.consume(token.DecimalLiteral))
 	opts := parseFieldOptions(p)
 	p.consume(token.Semicolon)
 
 	return OneOfField{Type: typ, Name: name, Number: number, Options: opts}
-}
-
-// A Map field has a key type, value type, name, and field number.
-// The key type can be any integral or string type.
-type Map struct {
-	KeyType   scanner.Token
-	ValueType Type
-	Name      scanner.Token
-	Number    scanner.Token
-	Options   []Option
 }
 
 // mapField = "map" "<" keyType "," type ">" mapName "=" fieldNumber [ "[" fieldOptions "]" ] ";"
@@ -353,23 +259,17 @@ func parseMap(p *peeker) Map {
 	if !key.IsKeyType() {
 		panicf("expected key type, got %s", key)
 	}
+	keyType := Type{Predefined: kindToType(key.Kind)}
 	p.consume(token.Comma)
-	value := parseType(p)
+	valueType := parseType(p)
 	p.consume(token.CloseAngled)
-	name := p.consume(token.Identifier)
+	name := identifier(p.consume(token.Identifier))
 	p.consume(token.Equals)
-	number := p.consume(token.DecimalLiteral)
+	number := atoi(p.consume(token.DecimalLiteral))
 	opts := parseFieldOptions(p)
 	p.consume(token.Semicolon)
 
-	return Map{KeyType: key, ValueType: value, Name: name, Number: number, Options: opts}
-}
-
-// Type contains either a predefined type in the form a Token,
-// or a full identifier.
-type Type struct {
-	Predefined  scanner.Token
-	UserDefined FullIdentifier
+	return Map{KeyType: keyType, ValueType: valueType, Name: name, Number: number, Options: opts}
 }
 
 // type = "double" | "float" | "int32" | "int64" | "uint32" | "uint64"
@@ -377,21 +277,10 @@ type Type struct {
 //       | "bool" | "string" | "bytes" | messageType | enumType
 func parseType(p *peeker) Type {
 	if p.peek().IsType() {
-		return Type{Predefined: p.scan()}
+		return Type{Predefined: kindToType(p.scan().Kind)}
 	}
 	return Type{UserDefined: parseFullIdentifier(p)}
 }
-
-// A Reserved statement declares a range of field numbers or field
-// names that cannot be used in this message.
-type Reserved struct {
-	IDs    []scanner.Token
-	Names  []scanner.Token
-	Ranges []Range
-}
-
-// A Range defines a range of values that are reserved in a Reserved statement.
-type Range struct{ From, To scanner.Token }
 
 // reserved = "reserved" ( ranges | fieldNames ) ";"
 // fieldNames = fieldName { "," fieldName }
@@ -405,12 +294,16 @@ func parseReserved(p *peeker) Reserved {
 			panicf("expected decimal literal or string, got %s", from)
 		}
 		if _, ok := p.maybeConsume(token.To); ok {
-			res.Ranges = append(res.Ranges, Range{from, p.consume(from.Kind)})
+			to := p.consume(from.Kind)
+			if !from.Is(token.DecimalLiteral) {
+				panicf("ranges over strings are not supported %s to %s", from, to)
+			}
+			res.Ranges = append(res.Ranges, Range{From: atoi(from), To: atoi(to)})
 		} else {
 			if from.Is(token.DecimalLiteral) {
-				res.IDs = append(res.IDs, from)
+				res.IDs = append(res.IDs, atoi(from))
 			} else {
-				res.Names = append(res.Names, from)
+				res.Names = append(res.Names, unquote(from))
 			}
 		}
 		if _, ok := p.maybeConsume(token.Semicolon); ok {
@@ -420,17 +313,10 @@ func parseReserved(p *peeker) Reserved {
 	}
 }
 
-// A Service is defined by its name and a list of RPC methods.
-type Service struct {
-	Name    scanner.Token
-	Options []Option
-	RPCs    []RPC
-}
-
 // service = "service" serviceName "{" { option | rpc | emptyStatement } "}"
 func parseService(p *peeker) Service {
 	p.consume(token.Service)
-	svc := Service{Name: p.consume(token.Identifier)}
+	svc := Service{Name: identifier(p.consume(token.Identifier))}
 
 	p.consume(token.OpenBrace)
 	for {
@@ -448,19 +334,10 @@ func parseService(p *peeker) Service {
 	}
 }
 
-// A RPC method defines a remote procedure call with a name,
-// input and output types, and options.
-type RPC struct {
-	Name    scanner.Token
-	In      RPCParam
-	Out     RPCParam
-	Options []Option
-}
-
 // rpc = "rpc" rpcName rpcParam "returns" rpcParam (( "{" {option | emptyStatement } "}" ) | ";")
 func parseRPC(p *peeker) RPC {
 	p.consume(token.RPC)
-	rpc := RPC{Name: p.consume(token.Identifier)}
+	rpc := RPC{Name: identifier(p.consume(token.Identifier))}
 	rpc.In = parseRPCParam(p)
 	p.consume(token.Returns)
 	rpc.Out = parseRPCParam(p)
@@ -478,12 +355,6 @@ func parseRPC(p *peeker) RPC {
 	}
 }
 
-// An RPCParam defines an input or output parameter for an RPC service.
-type RPCParam struct {
-	Stream bool
-	Type   FullIdentifier
-}
-
 // rpcParam = "(" [ "stream" ] messageType ")"
 func parseRPCParam(p *peeker) RPCParam {
 	p.consume(token.OpenParen)
@@ -493,41 +364,80 @@ func parseRPCParam(p *peeker) RPCParam {
 	return RPCParam{Stream: stream, Type: typ}
 }
 
-// A FullIdentifier is a series of identifiers joined by dots.
-type FullIdentifier []scanner.Token
+func identifier(tok scanner.Token) Identifier {
+	if !tok.Is(token.Identifier) {
+		panicf("can't parse an identifier from %s", tok)
+	}
+	return Identifier(tok.Text)
+}
 
-func parseFullIdentifier(p *peeker) FullIdentifier {
-	ident := FullIdentifier{p.consume(token.Identifier)}
+func parseFullIdentifier(p *peeker) []Identifier {
+	ident := []Identifier{identifier(p.consume(token.Identifier))}
 	for {
 		dot := p.peek()
 		if !dot.Is(token.Dot) {
 			return ident
 		}
 		p.scan()
-		ident = append(ident, p.consume(token.Identifier))
+		ident = append(ident, identifier(p.consume(token.Identifier)))
 	}
 }
 
-// A SignedNumber contains a sign token.Plus or token.Minus and a number literal.
-type SignedNumber struct {
-	Sign, Number scanner.Token
+func parseInt(tok scanner.Token, base int, negative bool) int64 {
+	v, err := strconv.ParseInt(tok.Text, base, 64)
+	if err != nil {
+		panicf("bad %s: %v", tok, err)
+	}
+	if negative {
+		return -v
+	}
+	return v
 }
 
-func parseConstant(p *peeker) interface{} {
-	switch next := p.peek(); {
-	case next.IsConstant():
-		return p.scan()
-	case next.Is(token.Plus) || next.Is(token.Minus):
-		p.scan()
-		number := p.scan()
-		if !number.IsNumber() {
-			panicf("expected number after %v, got %v", next.Kind, number.Kind)
-		}
-		return SignedNumber{next, number}
-	case next.Is(token.Identifier):
+func parseFloat(tok scanner.Token, negative bool) float64 {
+	v, err := strconv.ParseFloat(tok.Text, 64)
+	if err != nil {
+		panicf("bad %s: %v", tok, err)
+	}
+	if negative {
+		return -v
+	}
+	return v
+}
+
+func parseValue(p *peeker, negative bool) interface{} {
+	next := p.peek()
+	if next.Is(token.Identifier) {
 		return parseFullIdentifier(p)
+	}
+	p.scan()
+	switch next.Kind {
+	case token.DecimalLiteral:
+		return parseInt(next, 10, negative)
+	case token.HexLiteral:
+		return parseInt(next, 16, negative)
+	case token.OctalLiteral:
+		return parseInt(next, 8, negative)
+	case token.FloatLiteral:
+		return parseFloat(next, negative)
 	default:
-		panicf("expected a valid constant value, but got %s", next)
+		if negative {
+			panicf("found minus sign before %s", next)
+		}
+		switch next.Kind {
+		case token.StringLiteral:
+			return unquote(next)
+		case token.False:
+			return false
+		case token.True:
+			return true
+		case token.Minus:
+			return parseValue(p, true)
+		case token.Plus:
+			return parseValue(p, false)
+		default:
+			panicf("expected a valid constant value, but got %s", next)
+		}
 	}
 	panic("unreachable")
 }
@@ -589,4 +499,52 @@ func (p *peeker) maybeConsume(toks ...token.Kind) (scanner.Token, bool) {
 		}
 	}
 	return got, false
+}
+
+func atoi(tok scanner.Token) int {
+	if !tok.IsNumber() {
+		panicf("can't parse a number from %s", tok)
+	}
+	v, err := strconv.Atoi(tok.Text)
+	if err != nil {
+		panicf("bad number %s", tok.Text)
+	}
+	return v
+}
+
+func unquote(tok scanner.Token) string {
+	if !tok.Is(token.StringLiteral) {
+		panicf("can't unquote %s", tok)
+	}
+	v, err := strconv.Unquote(tok.Text)
+	if err != nil {
+		panicf("bad quoting on %s: %v", tok, err)
+	}
+	return v
+}
+
+func kindToType(k token.Kind) PredefinedType {
+	t, ok := kindToTypeMap[k]
+	if !ok {
+		panicf("could not find predefined type for %s", k)
+	}
+	return t
+}
+
+var kindToTypeMap = map[token.Kind]PredefinedType{
+	token.Bytes:    TypeBytes,
+	token.Double:   TypeDouble,
+	token.Float:    TypeFloat,
+	token.Bool:     TypeBool,
+	token.Fixed32:  TypeFixed32,
+	token.Fixed64:  TypeFixed64,
+	token.Int32:    TypeInt32,
+	token.Int64:    TypeInt64,
+	token.Sfixed32: TypeSfixed32,
+	token.Sfixed64: TypeSfixed64,
+	token.Sint32:   TypeSint32,
+	token.Sint64:   TypeSint64,
+	token.String:   TypeString,
+	token.Uint32:   TypeUint32,
+	token.Uint64:   TypeUint64,
 }

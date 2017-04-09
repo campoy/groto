@@ -22,6 +22,7 @@ import (
 	"strings"
 	"testing"
 
+	. "github.com/campoy/groto/proto"
 	"github.com/campoy/groto/scanner"
 	"github.com/campoy/groto/token"
 	"github.com/kr/pretty"
@@ -31,19 +32,19 @@ func make(kind token.Kind, text string) scanner.Token {
 	return scanner.Token{Kind: kind, Text: text}
 }
 
-func fullIdentifier(names ...string) FullIdentifier {
-	var f FullIdentifier
+func fullIdentifier(names ...string) []Identifier {
+	var ids []Identifier
 	for _, name := range names {
-		f = append(f, make(token.Identifier, name))
+		ids = append(ids, Identifier(name))
 	}
-	return f
+	return ids
 }
 
-func TestParseProto(t *testing.T) {
+func TestParse(t *testing.T) {
 	tests := []struct {
 		name string
 		in   string
-		out  *Proto
+		out  *File
 		err  error
 	}{
 		{name: "big message", in: `
@@ -87,114 +88,80 @@ func TestParseProto(t *testing.T) {
 				RUNNING = 1;
 			}
 			`,
-			out: &Proto{
-				Syntax:  Syntax{make(token.StringLiteral, `"proto3"`)},
-				Package: Package{fullIdentifier("foo", "bar")},
+			out: &File{
+				Syntax:  Syntax{Value: "proto3"},
+				Package: Package{Identifier: fullIdentifier("foo", "bar")},
 				Imports: []Import{{
-					Modifier: make(token.Public, ""),
-					Path:     make(token.StringLiteral, `"new.proto"`),
+					Modifier: PublicImport,
+					Path:     "new.proto",
 				}, {
-					Path: make(token.StringLiteral, `"other.proto"`),
+					Path: "other.proto",
 				}},
 				Options: []Option{{
 					Name:  fullIdentifier("java_package"),
-					Value: make(token.StringLiteral, `"com.example.foo"`),
+					Value: "com.example.foo",
 				}, {
 					Name:  fullIdentifier("go_package"),
-					Value: make(token.StringLiteral, `"foo"`),
+					Value: "foo",
 				}},
 				Messages: []Message{
 					{
-						Name: make(token.Identifier, "SearchRequest"),
+						Name: "SearchRequest",
 						Fields: []Field{
 							{
-								Type:   Type{Predefined: make(token.String, "")},
-								Name:   make(token.Identifier, "query"),
-								Number: make(token.DecimalLiteral, "1"),
+								Type:   Type{Predefined: TypeString},
+								Name:   "query",
+								Number: 1,
 							}, {
-								Type:   Type{Predefined: make(token.Int32, "")},
-								Name:   make(token.Identifier, "page_number"),
-								Number: make(token.DecimalLiteral, "2"),
+								Type:   Type{Predefined: TypeInt32},
+								Name:   "page_number",
+								Number: 2,
 							}, {
-								Type:   Type{Predefined: make(token.Int32, "")},
-								Name:   make(token.Identifier, "result_per_page"),
-								Number: make(token.DecimalLiteral, "3"),
+								Type:   Type{Predefined: TypeInt32},
+								Name:   "result_per_page",
+								Number: 3,
 							}, {
 								Type:   Type{UserDefined: fullIdentifier("Corpus")},
-								Name:   make(token.Identifier, "corpus"),
-								Number: make(token.DecimalLiteral, "4"),
+								Name:   "corpus",
+								Number: 4,
 							},
 						},
 						Enums: []Enum{
 							{
-								Name: make(token.Identifier, "Corpus"),
+								Name: "Corpus",
 								Fields: []EnumField{
-									{
-										Name:   make(token.Identifier, "UNIVERSAL"),
-										Number: make(token.DecimalLiteral, "0"),
-									}, {
-										Name:   make(token.Identifier, "WEB"),
-										Number: make(token.DecimalLiteral, "1"),
-									}, {
-										Name:   make(token.Identifier, "IMAGES"),
-										Number: make(token.DecimalLiteral, "2"),
-									}, {
-										Name:   make(token.Identifier, "LOCAL"),
-										Number: make(token.DecimalLiteral, "3"),
-									}, {
-										Name:   make(token.Identifier, "NEWS"),
-										Number: make(token.DecimalLiteral, "4"),
-									}, {
-										Name:   make(token.Identifier, "PRODUCTS"),
-										Number: make(token.DecimalLiteral, "5"),
-									}, {
-										Name:   make(token.Identifier, "VIDEO"),
-										Number: make(token.DecimalLiteral, "6"),
-									},
+									{Name: "UNIVERSAL", Number: 0},
+									{Name: "WEB", Number: 1},
+									{Name: "IMAGES", Number: 2},
+									{Name: "LOCAL", Number: 3},
+									{Name: "NEWS", Number: 4},
+									{Name: "PRODUCTS", Number: 5},
+									{Name: "VIDEO", Number: 6},
 								},
 							},
 						},
 					}, {
-						Name: make(token.Identifier, "Foo"),
+						Name: "Foo",
 						Reserveds: []Reserved{
 							{
-								IDs: []scanner.Token{
-									make(token.DecimalLiteral, "2"),
-									make(token.DecimalLiteral, "15"),
-								},
-								Ranges: []Range{{
-									make(token.DecimalLiteral, "9"),
-									make(token.DecimalLiteral, "11"),
-								}},
+								IDs:    []int{2, 15},
+								Ranges: []Range{{From: 9, To: 11}},
 							}, {
-								Names: []scanner.Token{
-									make(token.StringLiteral, `"foo"`),
-									make(token.StringLiteral, `"bar"`),
-								},
+								Names: []string{"foo", "bar"},
 							},
 						},
 					},
 				},
 				Enums: []Enum{
 					{
-						Name: make(token.Identifier, "EnumAllowingAlias"),
+						Name: "EnumAllowingAlias",
 						Fields: []EnumField{
-							{
-								Name:   make(token.Identifier, "UNKNOWN"),
-								Number: make(token.DecimalLiteral, "0"),
-							}, {
-								Name:   make(token.Identifier, "STARTED"),
-								Number: make(token.DecimalLiteral, "1"),
-							}, {
-								Name:   make(token.Identifier, "RUNNING"),
-								Number: make(token.DecimalLiteral, "1"),
-							},
+							{Name: "UNKNOWN", Number: 0},
+							{Name: "STARTED", Number: 1},
+							{Name: "RUNNING", Number: 1},
 						},
 						Options: []Option{
-							{
-								Name:  fullIdentifier("allow_alias"),
-								Value: make(token.True, ""),
-							},
+							{Name: fullIdentifier("allow_alias"), Value: true},
 						},
 					},
 				},
@@ -222,13 +189,13 @@ func TestParseSyntax(t *testing.T) {
 		err  error
 	}{
 		{name: "good syntax", in: `syntax = "proto3";`,
-			out: Syntax{make(token.StringLiteral, `"proto3"`)},
+			out: Syntax{Value: "proto3"},
 		},
 		{name: "missing equal", in: `syntax "proto3";`,
 			err: errors.New(`expected '=', got string literal ("proto3")`),
 		},
 		{name: "bad text", in: `syntax = "proto2";`,
-			err: errors.New(`expected literal string "proto3", got "proto2" instead`),
+			err: errors.New(`expected literal string proto3, got proto2 instead`),
 		},
 		{name: "missing semicolon", in: `syntax = "proto3"`,
 			err: errors.New(`expected ';', got end of file`),
@@ -259,13 +226,13 @@ func TestParseImport(t *testing.T) {
 		err  error
 	}{
 		{name: "good syntax", in: `import "path";`,
-			out: Import{Path: make(token.StringLiteral, `"path"`)},
+			out: Import{Path: "path"},
 		},
 		{name: "good public syntax", in: `import public "path";`,
-			out: Import{Path: make(token.StringLiteral, `"path"`), Modifier: make(token.Public, "")},
+			out: Import{Path: "path", Modifier: PublicImport},
 		},
 		{name: "good weak syntax", in: `import weak "path";`,
-			out: Import{Path: make(token.StringLiteral, `"path"`), Modifier: make(token.Weak, "")},
+			out: Import{Path: "path", Modifier: WeakImport},
 		},
 		{name: "bad modifier", in: `import bytes "path";`,
 			err: errors.New(`expected string literal, got bytes`),
@@ -299,10 +266,10 @@ func TestParsePackage(t *testing.T) {
 		err  error
 	}{
 		{name: "single identifier", in: `package foo;`,
-			out: Package{fullIdentifier("foo")},
+			out: Package{Identifier: fullIdentifier("foo")},
 		},
 		{name: "full identifer", in: `package com.example.foo;`,
-			out: Package{fullIdentifier("com", "example", "foo")},
+			out: Package{Identifier: fullIdentifier("com", "example", "foo")},
 		},
 		{name: "bad identifier", in: `package "foo";`,
 			err: errors.New(`expected identifier, got string literal ("foo")`),
@@ -332,7 +299,7 @@ func TestParseOption(t *testing.T) {
 		{name: "good syntax string", in: `option java_package = "com.example.foo";`,
 			out: Option{
 				Name:  fullIdentifier("java_package"),
-				Value: make(token.StringLiteral, `"com.example.foo"`),
+				Value: "com.example.foo",
 			},
 		},
 		{name: "good syntax full identifer", in: `option java_package = foo.bar;`,
@@ -344,16 +311,13 @@ func TestParseOption(t *testing.T) {
 		{name: "good syntax integer", in: `option options.number = 42;`,
 			out: Option{
 				Name:  fullIdentifier("options", "number"),
-				Value: make(token.DecimalLiteral, "42"),
+				Value: int64(42),
 			},
 		},
 		{name: "good syntax signed float", in: `option java_package = -10.5;`,
 			out: Option{
-				Name: fullIdentifier("java_package"),
-				Value: SignedNumber{
-					Sign:   make(token.Minus, ""),
-					Number: make(token.FloatLiteral, "10.5"),
-				},
+				Name:  fullIdentifier("java_package"),
+				Value: -10.5,
 			},
 		},
 		{name: "bad syntax", in: `option java_package = syntax;`,
@@ -382,21 +346,19 @@ func TestParseMessage(t *testing.T) {
 		err  error
 	}{
 		{name: "empty message", in: `message Foo {}`,
-			out: Message{
-				Name: make(token.Identifier, "Foo"),
-			},
+			out: Message{Name: "Foo"},
 		},
 		{name: "simple message",
 			in: `message Foo {
 					repeated int32 ids = 1;
 				}`,
 			out: Message{
-				Name: make(token.Identifier, "Foo"),
+				Name: "Foo",
 				Fields: []Field{{
 					Repeated: true,
-					Type:     Type{Predefined: make(token.Int32, "")},
-					Name:     make(token.Identifier, "ids"),
-					Number:   make(token.DecimalLiteral, "1"),
+					Type:     Type{Predefined: TypeInt32},
+					Name:     "ids",
+					Number:   1,
 				}},
 			},
 		},
@@ -406,16 +368,16 @@ func TestParseMessage(t *testing.T) {
 					repeated int64 ids = 2;
 				}`,
 			out: Message{
-				Name: make(token.Identifier, "Foo"),
+				Name: "Foo",
 				Fields: []Field{{
-					Type:   Type{Predefined: make(token.Bool, "")},
-					Name:   make(token.Identifier, "foo"),
-					Number: make(token.DecimalLiteral, "1"),
+					Type:   Type{Predefined: TypeBool},
+					Name:   "foo",
+					Number: 1,
 				}, {
 					Repeated: true,
-					Type:     Type{Predefined: make(token.Int64, "")},
-					Name:     make(token.Identifier, "ids"),
-					Number:   make(token.DecimalLiteral, "2"),
+					Type:     Type{Predefined: TypeInt64},
+					Name:     "ids",
+					Number:   2,
 				}},
 			},
 		},
@@ -424,15 +386,15 @@ func TestParseMessage(t *testing.T) {
 					repeated int32 ids = 1 [packed=true];
 				}`,
 			out: Message{
-				Name: make(token.Identifier, "Foo"),
+				Name: "Foo",
 				Fields: []Field{{
 					Repeated: true,
-					Type:     Type{Predefined: make(token.Int32, "")},
-					Name:     make(token.Identifier, "ids"),
-					Number:   make(token.DecimalLiteral, "1"),
+					Type:     Type{Predefined: TypeInt32},
+					Name:     "ids",
+					Number:   1,
 					Options: []Option{{
 						Name:  fullIdentifier("packed"),
-						Value: make(token.True, ""),
+						Value: true,
 					}},
 				}},
 			},
@@ -442,18 +404,18 @@ func TestParseMessage(t *testing.T) {
 					repeated int32 ids = 1 [packed=true,json="-"];
 				}`,
 			out: Message{
-				Name: make(token.Identifier, "Foo"),
+				Name: "Foo",
 				Fields: []Field{{
 					Repeated: true,
-					Type:     Type{Predefined: make(token.Int32, "")},
-					Name:     make(token.Identifier, "ids"),
-					Number:   make(token.DecimalLiteral, "1"),
+					Type:     Type{Predefined: TypeInt32},
+					Name:     "ids",
+					Number:   1,
 					Options: []Option{{
 						Name:  fullIdentifier("packed"),
-						Value: make(token.True, ""),
+						Value: true,
 					}, {
 						Name:  fullIdentifier("json"),
-						Value: make(token.StringLiteral, `"-"`),
+						Value: "-",
 					}},
 				}},
 			},
@@ -468,28 +430,24 @@ func TestParseMessage(t *testing.T) {
 					}
 				}`,
 			out: Message{
-				Name: make(token.Identifier, "Foo"),
+				Name: "Foo",
 				Enums: []Enum{{
-					Name: make(token.Identifier, "EnumAllowingAlias"),
+					Name: "EnumAllowingAlias",
 					Options: []Option{
 						{
 							Name:  fullIdentifier("allow_alias"),
-							Value: make(token.True, ""),
+							Value: true,
 						},
 					},
 					Fields: []EnumField{
+						{Name: "UNKNOWN", Number: 0},
+						{Name: "STARTED", Number: 1},
 						{
-							Name:   make(token.Identifier, "UNKNOWN"),
-							Number: make(token.DecimalLiteral, "0"),
-						}, {
-							Name:   make(token.Identifier, "STARTED"),
-							Number: make(token.DecimalLiteral, "1"),
-						}, {
-							Name:   make(token.Identifier, "RUNNING"),
-							Number: make(token.DecimalLiteral, "2"),
+							Name:   "RUNNING",
+							Number: 2,
 							Options: []Option{{
 								Prefix: fullIdentifier("custom_option"),
-								Value:  make(token.StringLiteral, `"hello world"`),
+								Value:  "hello world",
 							}},
 						},
 					},
@@ -503,13 +461,13 @@ func TestParseMessage(t *testing.T) {
 					}
 				}`,
 			out: Message{
-				Name: make(token.Identifier, "Foo"),
+				Name: "Foo",
 				Messages: []Message{{
-					Name: make(token.Identifier, "Bar"),
+					Name: "Bar",
 					Fields: []Field{{
-						Type:   Type{Predefined: make(token.Int32, "")},
-						Name:   make(token.Identifier, "id"),
-						Number: make(token.DecimalLiteral, "1"),
+						Type:   Type{Predefined: TypeInt32},
+						Name:   "id",
+						Number: 1,
 					}},
 				}},
 			},
@@ -522,17 +480,17 @@ func TestParseMessage(t *testing.T) {
 					}
 				}`,
 			out: Message{
-				Name: make(token.Identifier, "Foo"),
+				Name: "Foo",
 				OneOfs: []OneOf{{
-					Name: make(token.Identifier, "foo"),
+					Name: "foo",
 					Fields: []OneOfField{{
-						Type:   Type{Predefined: make(token.String, "")},
-						Name:   make(token.Identifier, "name"),
-						Number: make(token.DecimalLiteral, "4"),
+						Type:   Type{Predefined: TypeString},
+						Name:   "name",
+						Number: 4,
 					}, {
 						Type:   Type{UserDefined: fullIdentifier("SubMessage")},
-						Name:   make(token.Identifier, "sub_message"),
-						Number: make(token.DecimalLiteral, "9"),
+						Name:   "sub_message",
+						Number: 9,
 					}},
 				}},
 			},
@@ -542,12 +500,12 @@ func TestParseMessage(t *testing.T) {
 					map<string, Project> projects = 3;
 				}`,
 			out: Message{
-				Name: make(token.Identifier, "Foo"),
+				Name: "Foo",
 				Maps: []Map{{
-					Name:      make(token.Identifier, "projects"),
-					KeyType:   make(token.String, ""),
+					Name:      "projects",
+					KeyType:   Type{Predefined: TypeString},
 					ValueType: Type{UserDefined: fullIdentifier("Project")},
-					Number:    make(token.DecimalLiteral, "3"),
+					Number:    3,
 				}},
 			},
 		},
@@ -557,21 +515,12 @@ func TestParseMessage(t *testing.T) {
 					reserved "foo", "bar";
 				}`,
 			out: Message{
-				Name: make(token.Identifier, "Foo"),
+				Name: "Foo",
 				Reserveds: []Reserved{{
-					IDs: []scanner.Token{
-						make(token.DecimalLiteral, "2"),
-						make(token.DecimalLiteral, "15"),
-					},
-					Ranges: []Range{{
-						make(token.DecimalLiteral, "9"),
-						make(token.DecimalLiteral, "11"),
-					}},
+					IDs:    []int{2, 15},
+					Ranges: []Range{{From: 9, To: 11}},
 				}, {
-					Names: []scanner.Token{
-						make(token.StringLiteral, `"foo"`),
-						make(token.StringLiteral, `"bar"`),
-					},
+					Names: []string{"foo", "bar"},
 				}},
 			},
 		},
@@ -602,9 +551,9 @@ func TestParseService(t *testing.T) {
 					rpc Search (SearchRequest) returns (stream SearchResponse);
 				}`,
 			out: Service{
-				Name: make(token.Identifier, "SearchService"),
+				Name: "SearchService",
 				RPCs: []RPC{{
-					Name: make(token.Identifier, "Search"),
+					Name: "Search",
 					In:   RPCParam{Type: fullIdentifier("SearchRequest")},
 					Out:  RPCParam{Type: fullIdentifier("SearchResponse"), Stream: true},
 				}},
@@ -617,14 +566,14 @@ func TestParseService(t *testing.T) {
 					}
 				}`,
 			out: Service{
-				Name: make(token.Identifier, "SearchService"),
+				Name: "SearchService",
 				RPCs: []RPC{{
-					Name: make(token.Identifier, "Search"),
+					Name: "Search",
 					In:   RPCParam{Type: fullIdentifier("SearchRequest")},
 					Out:  RPCParam{Type: fullIdentifier("SearchResponse"), Stream: true},
 					Options: []Option{{
 						Name:  fullIdentifier("secured"),
-						Value: make(token.False, ""),
+						Value: false,
 					}},
 				}},
 			},
